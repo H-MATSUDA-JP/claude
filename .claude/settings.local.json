@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx --yes live-server --version)",
+      "Bash(npx --yes serve --version)",
+      "Bash(python -m http.server --help)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(netstat -ano)",
+      "Bash(ls \"C:/Users/haruh/OneDrive/ドキュメント/FTP/claude_test/node_modules/.bin/live-server\"*)",
+      "WebFetch(domain:e-time.jp)",
+      "Bash(node deploy.js)"
+    ]
+  }
+}

@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>テトリス</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #f6f6f6;
+      color: #333;
+      font-family: 'Segoe UI', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .game-container {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-width: 120px;
+    }
+    .panel-box {
+      background: #ffffff;
+      border: 2px solid #dddddd;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    .panel-box h3 {
+      font-size: 12px;
+      color: #e37711;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      letter-spacing: 1px;
+    }
+    .panel-box .value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #000;
+    }
+    #game-canvas {
+      border: 3px solid #e37711;
+      border-radius: 4px;
+      background: #efefef;
+    }
+    #next-canvas, #hold-canvas {
+      background: #efefef;
+      border-radius: 4px;
+      margin: 0 auto;
+    }
+    #start-btn {
+      background: #e37711;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      width: 100%;
+    }
+    #start-btn:hover { background: #dd9933; }
+    #bgm-btn {
+      background: #4ba6d4;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      width: 100%;
+    }
+    #bgm-btn:hover { background: #3a95c3; }
+    #bgm-btn.on { background: #e37711; }
+    #bgm-btn.on:hover { background: #dd9933; }
+    .controls {
+      font-size: 11px;
+      color: #888;
+      line-height: 1.8;
+    }
+    .game-over-overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .game-over-overlay .go-text {
+      font-size: 36px;
+      font-weight: bold;
+      color: #e37711;
+      text-shadow: 0 0 20px rgba(227,119,17,0.6), 0 2px 8px rgba(0,0,0,0.5);
+      animation: zoomIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    @keyframes zoomIn {
+      0% { transform: scale(0); opacity: 0; }
+      60% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .board-wrapper {
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+  <div class="game-container">
+    <div class="side-panel">
+      <div class="panel-box">
+        <h3>Hold (C)</h3>
+        <canvas id="hold-canvas"></canvas>
+      </div>
+      <div class="panel-box">
+        <h3>Score</h3>
+        <div class="value" id="score">0</div>
+      </div>
+      <div class="panel-box">
+        <h3>Level</h3>
+        <div class="value" id="level">1</div>
+      </div>
+      <div class="panel-box">
+        <h3>Lines</h3>
+        <div class="value" id="lines">0</div>
+      </div>
+      <div class="panel-box controls">
+        <h3>Controls</h3>
+        ← → 移動<br>
+        ↑ 回転<br>
+        ↓ 加速<br>
+        Space ドロップ<br>
+        C ホールド<br>
+        P ポーズ
+      </div>
+    </div>
+    <div class="board-wrapper">
+      <canvas id="game-canvas"></canvas>
+      <div class="game-over-overlay" id="game-over-overlay">
+        <div class="go-text">GAME OVER</div>
+      </div>
+    </div>
+    <div class="side-panel">
+      <div class="panel-box">
+        <h3>Next</h3>
+        <canvas id="next-canvas"></canvas>
+      </div>
+      <button id="start-btn">START</button>
+      <button id="bgm-btn">BGM: OFF</button>
+    </div>
+  </div>
+
+  <script>
+    const COLS = 10;
+    const ROWS = 20;
+    const BLOCK = 28;
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = COLS * BLOCK;
+    canvas.height = ROWS * BLOCK;
+
+    const nextCanvas = document.getElementById('next-canvas');
+    const nctx = nextCanvas.getContext('2d');
+    nextCanvas.width = 4 * BLOCK;
+    nextCanvas.height = 4 * BLOCK;
+
+    const holdCanvas = document.getElementById('hold-canvas');
+    const hctx = holdCanvas.getContext('2d');
+    holdCanvas.width = 4 * BLOCK;
+    holdCanvas.height = 4 * BLOCK;
+
+    const COLORS = [
+      null,
+      '#4ba6d4', // I - blue
+      '#f9b42d', // O - gold
+      '#e37711', // T - orange
+      '#7ab648', // S - green
+      '#d4534a', // Z - red
+      '#009aff', // J - bright blue
+      '#dd9933', // L - warm orange
+    ];
+
+    const PIECES = [
+      null,
+      [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
+      [[2,2],[2,2]],                                 // O
+      [[0,3,0],[3,3,3],[0,0,0]],                     // T
+      [[0,4,4],[4,4,0],[0,0,0]],                     // S
+      [[5,5,0],[0,5,5],[0,0,0]],                     // Z
+      [[6,0,0],[6,6,6],[0,0,0]],                     // J
+      [[0,0,7],[7,7,7],[0,0,0]],                     // L
+    ];
+
+    let board, piece, piecePos, nextPiece, score, lines, level;
+    let dropInterval, gameOver, paused, started;
+    let holdPiece, holdUsed;
+
+    // === Sound Effects ===
+    const SFX = (() => {
+      let audioCtx = null;
+      function getCtx() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        return audioCtx;
+      }
+      function play(freq, duration, type, vol, freqEnd) {
+        const ctx = getCtx();
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, ctx.currentTime + duration);
+        g.gain.setValueAtTime(vol, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + duration);
+      }
+      return {
+        move()    { play(300, 0.05, 'square', 0.06); },
+        rotate()  { play(500, 0.08, 'square', 0.06); },
+        drop()    { play(200, 0.15, 'triangle', 0.1, 80); },
+        lock()    { play(150, 0.1, 'triangle', 0.08); },
+        clear(n)  {
+          const freqs = [0, 600, 700, 800, 1000];
+          play(freqs[n] || 600, 0.2, 'square', 0.08);
+          play((freqs[n] || 600) * 1.5, 0.3, 'triangle', 0.05);
+        },
+        hold()    { play(400, 0.08, 'sine', 0.06); play(600, 0.08, 'sine', 0.04); },
+        gameOver() {
+          const ctx = getCtx();
+          const t = ctx.currentTime;
+          for (let i = 0; i < 4; i++) {
+            const osc = ctx.createOscillator();
+            const g = ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(400 - i * 80, t + i * 0.2);
+            g.gain.setValueAtTime(0.08, t + i * 0.2);
+            g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.2 + 0.3);
+            osc.connect(g);
+            g.connect(ctx.destination);
+            osc.start(t + i * 0.2);
+            osc.stop(t + i * 0.2 + 0.3);
+          }
+          // final low tone
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(120, t + 0.8);
+          osc.frequency.exponentialRampToValueAtTime(40, t + 2.0);
+          g.gain.setValueAtTime(0.1, t + 0.8);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 2.0);
+          osc.connect(g);
+          g.connect(ctx.destination);
+          osc.start(t + 0.8);
+          osc.stop(t + 2.0);
+        }
+      };
+    })();
+
+    function createBoard() {
+      return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
+    }
+
+    function clonePiece(p) {
+      return p.map(row => [...row]);
+    }
+
+    function getPieceId(p) {
+      for (let y = 0; y < p.length; y++)
+        for (let x = 0; x < p[y].length; x++)
+          if (p[y][x] !== 0) return p[y][x];
+      return 0;
+    }
+
+    function randomPiece() {
+      const id = Math.floor(Math.random() * 7) + 1;
+      return clonePiece(PIECES[id]);
+    }
+
+    function rotate(matrix) {
+      const n = matrix.length;
+      const result = Array.from({ length: n }, () => new Array(n).fill(0));
+      for (let y = 0; y < n; y++)
+        for (let x = 0; x < n; x++)
+          result[x][n - 1 - y] = matrix[y][x];
+      return result;
+    }
+
+    function collides(board, piece, pos) {
+      for (let y = 0; y < piece.length; y++) {
+        for (let x = 0; x < piece[y].length; x++) {
+          if (piece[y][x] !== 0) {
+            const nx = pos.x + x;
+            const ny = pos.y + y;
+            if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+            if (ny >= 0 && board[ny][nx] !== 0) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function merge(board, piece, pos) {
+      for (let y = 0; y < piece.length; y++)
+        for (let x = 0; x < piece[y].length; x++)
+          if (piece[y][x] !== 0 && pos.y + y >= 0)
+            board[pos.y + y][pos.x + x] = piece[y][x];
+    }
+
+    function clearLines() {
+      let cleared = 0;
+      for (let y = ROWS - 1; y >= 0; y--) {
+        if (board[y].every(c => c !== 0)) {
+          board.splice(y, 1);
+          board.unshift(new Array(COLS).fill(0));
+          cleared++;
+          y++;
+        }
+      }
+      if (cleared > 0) {
+        SFX.clear(cleared);
+        const points = [0, 100, 300, 500, 800];
+        score += (points[cleared] || 800) * level;
+        lines += cleared;
+        level = Math.floor(lines / 10) + 1;
+        dropInterval = Math.max(50, 1000 - (level - 1) * 80);
+        updateUI();
+      }
+    }
+
+    function spawnPiece() {
+      piece = nextPiece || randomPiece();
+      nextPiece = randomPiece();
+      holdUsed = false;
+      piecePos = { x: Math.floor((COLS - piece[0].length) / 2), y: -1 };
+      if (collides(board, piece, piecePos)) {
+        gameOver = true;
+        showGameOver();
+      }
+      drawNext();
+    }
+
+    function holdCurrentPiece() {
+      if (holdUsed) return;
+      SFX.hold();
+      holdUsed = true;
+      const id = getPieceId(piece);
+      if (holdPiece) {
+        const temp = holdPiece;
+        holdPiece = clonePiece(PIECES[id]);
+        piece = temp;
+      } else {
+        holdPiece = clonePiece(PIECES[id]);
+        piece = nextPiece || randomPiece();
+        nextPiece = randomPiece();
+        drawNext();
+      }
+      piecePos = { x: Math.floor((COLS - piece[0].length) / 2), y: -1 };
+      drawHold();
+    }
+
+    function drawBlock(context, x, y, colorIdx) {
+      const color = COLORS[colorIdx];
+      context.fillStyle = color;
+      context.fillRect(x * BLOCK, y * BLOCK, BLOCK, BLOCK);
+      context.strokeStyle = 'rgba(0,0,0,0.15)';
+      context.lineWidth = 1;
+      context.strokeRect(x * BLOCK + 1, y * BLOCK + 1, BLOCK - 2, BLOCK - 2);
+      context.fillStyle = 'rgba(255,255,255,0.3)';
+      context.fillRect(x * BLOCK + 2, y * BLOCK + 2, BLOCK - 4, 4);
+      context.fillRect(x * BLOCK + 2, y * BLOCK + 2, 4, BLOCK - 4);
+    }
+
+    function drawGhost() {
+      let ghostPos = { ...piecePos };
+      while (!collides(board, piece, { x: ghostPos.x, y: ghostPos.y + 1 })) {
+        ghostPos.y++;
+      }
+      ctx.globalAlpha = 0.2;
+      for (let y = 0; y < piece.length; y++)
+        for (let x = 0; x < piece[y].length; x++)
+          if (piece[y][x] !== 0 && ghostPos.y + y >= 0)
+            drawBlock(ctx, ghostPos.x + x, ghostPos.y + y, piece[y][x]);
+      ctx.globalAlpha = 1;
+    }
+
+    function draw() {
+      ctx.fillStyle = '#efefef';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= COLS; x++) {
+        ctx.beginPath(); ctx.moveTo(x * BLOCK, 0); ctx.lineTo(x * BLOCK, canvas.height); ctx.stroke();
+      }
+      for (let y = 0; y <= ROWS; y++) {
+        ctx.beginPath(); ctx.moveTo(0, y * BLOCK); ctx.lineTo(canvas.width, y * BLOCK); ctx.stroke();
+      }
+
+      for (let y = 0; y < ROWS; y++)
+        for (let x = 0; x < COLS; x++)
+          if (board[y][x] !== 0)
+            drawBlock(ctx, x, y, board[y][x]);
+
+      if (piece && !gameOver) {
+        drawGhost();
+        for (let y = 0; y < piece.length; y++)
+          for (let x = 0; x < piece[y].length; x++)
+            if (piece[y][x] !== 0 && piecePos.y + y >= 0)
+              drawBlock(ctx, piecePos.x + x, piecePos.y + y, piece[y][x]);
+      }
+    }
+
+    function drawPieceOnCanvas(context, canvasEl, p) {
+      context.fillStyle = '#efefef';
+      context.fillRect(0, 0, canvasEl.width, canvasEl.height);
+      if (!p) return;
+      const offsetX = (4 - p[0].length) / 2;
+      const offsetY = (4 - p.length) / 2;
+      for (let y = 0; y < p.length; y++)
+        for (let x = 0; x < p[y].length; x++)
+          if (p[y][x] !== 0)
+            drawBlock(context, offsetX + x, offsetY + y, p[y][x]);
+    }
+
+    function drawNext() { drawPieceOnCanvas(nctx, nextCanvas, nextPiece); }
+    function drawHold() { drawPieceOnCanvas(hctx, holdCanvas, holdPiece); }
+
+    function updateUI() {
+      document.getElementById('score').textContent = score;
+      document.getElementById('level').textContent = level;
+      document.getElementById('lines').textContent = lines;
+    }
+
+    function showGameOver() {
+      SFX.gameOver();
+      BGM.stop();
+      bgmBtn.textContent = 'BGM: OFF';
+      bgmBtn.classList.remove('on');
+
+      const overlay = document.getElementById('game-over-overlay');
+      const text = overlay.querySelector('.go-text');
+      text.style.animation = 'none';
+      text.offsetHeight; // reflow
+      text.style.animation = '';
+      overlay.style.display = 'flex';
+      document.getElementById('start-btn').textContent = 'RESTART';
+    }
+
+    function hideGameOver() {
+      document.getElementById('game-over-overlay').style.display = 'none';
+    }
+
+    function drop() {
+      const newPos = { x: piecePos.x, y: piecePos.y + 1 };
+      if (!collides(board, piece, newPos)) {
+        piecePos = newPos;
+      } else {
+        SFX.lock();
+        merge(board, piece, piecePos);
+        clearLines();
+        spawnPiece();
+      }
+    }
+
+    function hardDrop() {
+      while (!collides(board, piece, { x: piecePos.x, y: piecePos.y + 1 })) {
+        piecePos.y++;
+        score += 2;
+      }
+      SFX.drop();
+      merge(board, piece, piecePos);
+      clearLines();
+      updateUI();
+      spawnPiece();
+    }
+
+    function moveLeft() {
+      const newPos = { x: piecePos.x - 1, y: piecePos.y };
+      if (!collides(board, piece, newPos)) { piecePos = newPos; SFX.move(); }
+    }
+
+    function moveRight() {
+      const newPos = { x: piecePos.x + 1, y: piecePos.y };
+      if (!collides(board, piece, newPos)) { piecePos = newPos; SFX.move(); }
+    }
+
+    function rotatePiece() {
+      const rotated = rotate(piece);
+      const kicks = [0, -1, 1, -2, 2];
+      for (const kick of kicks) {
+        const testPos = { x: piecePos.x + kick, y: piecePos.y };
+        if (!collides(board, rotated, testPos)) {
+          piece = rotated;
+          piecePos = testPos;
+          SFX.rotate();
+          return;
+        }
+      }
+    }
+
+    let lastTime = 0;
+
+    function gameLoop(time = 0) {
+      if (gameOver || !started) return;
+      if (paused) { requestAnimationFrame(gameLoop); return; }
+
+      const delta = time - lastTime;
+      if (delta > dropInterval) {
+        drop();
+        lastTime = time;
+      }
+      draw();
+      updateUI();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function startGame() {
+      board = createBoard();
+      score = 0; lines = 0; level = 1;
+      dropInterval = 1000;
+      gameOver = false;
+      paused = false;
+      started = true;
+      lastTime = 0;
+      holdPiece = null;
+      holdUsed = false;
+      hideGameOver();
+      updateUI();
+      drawHold();
+      spawnPiece();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (!started || gameOver) return;
+      switch (e.key) {
+        case 'ArrowLeft':  e.preventDefault(); moveLeft(); break;
+        case 'ArrowRight': e.preventDefault(); moveRight(); break;
+        case 'ArrowDown':  e.preventDefault(); drop(); score += 1; break;
+        case 'ArrowUp':    e.preventDefault(); rotatePiece(); break;
+        case ' ':          e.preventDefault(); hardDrop(); break;
+        case 'c': case 'C': e.preventDefault(); holdCurrentPiece(); break;
+        case 'p': case 'P':
+          paused = !paused;
+          break;
+      }
+    });
+
+    document.getElementById('start-btn').addEventListener('click', startGame);
+
+    // === BGM (Korobeiniki - Russian Folk) ===
+    const BGM = (() => {
+      let audioCtx = null;
+      let playing = false;
+      let scheduledTime = 0;
+      let noteIndex = 0;
+      let timerId = null;
+
+      const NOTE = {
+        'C4':261.63,'D4':293.66,'E4':329.63,'F4':349.23,'G4':392.00,
+        'A4':440.00,'B4':493.88,'C5':523.25,'D5':587.33,'E5':659.25,
+        'F5':698.46,'G5':783.99,'A5':880.00,'B5':987.77,
+        'G#4':415.30,'F#4':369.99,'C#5':554.37,'G#5':830.61,
+        'R':0
+      };
+
+      const melody = [
+        ['E5',2],['B4',1],['C5',1],['D5',2],['C5',1],['B4',1],
+        ['A4',2],['A4',1],['C5',1],['E5',2],['D5',1],['C5',1],
+        ['B4',3],['C5',1],['D5',2],['E5',2],
+        ['C5',2],['A4',2],['A4',4],
+        ['R',1],['D5',2],['F5',1],['A5',2],['G5',1],['F5',1],
+        ['E5',3],['C5',1],['E5',2],['D5',1],['C5',1],
+        ['B4',2],['B4',1],['C5',1],['D5',2],['E5',2],
+        ['C5',2],['A4',2],['A4',4],
+        ['E4',4],['C4',4],['D4',4],['B4',4],
+        ['C4',4],['A4',4],['G#4',4],['B4',4],
+        ['E4',4],['C4',4],['D4',4],['B4',4],
+        ['C5',2],['E5',2],['A5',4],['G#5',8],
+      ];
+
+      const bass = [
+        ['E4',4],['A4',4],['E4',4],['A4',4],
+        ['E4',4],['A4',4],['E4',4],['A4',4],
+        ['D4',4],['A4',4],['E4',4],['A4',4],
+        ['E4',4],['A4',4],['E4',4],['A4',4],
+        ['E4',4],['A4',4],['E4',4],['A4',4],
+        ['E4',4],['A4',4],['E4',4],['A4',4],
+      ];
+
+      const BPM = 140;
+      const eighthNote = 60 / BPM / 2;
+
+      function createOsc(freq, startTime, duration, type, gain) {
+        if (freq === 0) return;
+        const ctx = audioCtx;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = type;
+        osc.frequency.value = freq;
+        g.gain.setValueAtTime(gain, startTime);
+        g.gain.exponentialRampToValueAtTime(gain * 0.3, startTime + duration * 0.8);
+        g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      }
+
+      function scheduleNotes() {
+        if (!playing) return;
+        const lookAhead = 0.3;
+        while (scheduledTime < audioCtx.currentTime + lookAhead) {
+          const melodyNote = melody[noteIndex % melody.length];
+          const freq = NOTE[melodyNote[0]];
+          const dur = melodyNote[1] * eighthNote;
+          createOsc(freq, scheduledTime, dur * 0.9, 'square', 0.08);
+          createOsc(freq, scheduledTime, dur * 0.9, 'triangle', 0.06);
+          const bassNote = bass[noteIndex % bass.length];
+          const bassFreq = NOTE[bassNote[0]] / 2;
+          const bassDur = bassNote[1] * eighthNote;
+          createOsc(bassFreq, scheduledTime, bassDur * 0.85, 'triangle', 0.1);
+          scheduledTime += dur;
+          noteIndex++;
+        }
+        timerId = setTimeout(scheduleNotes, 100);
+      }
+
+      return {
+        toggle() {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if (playing) {
+            playing = false;
+            clearTimeout(timerId);
+            return false;
+          } else {
+            playing = true;
+            noteIndex = 0;
+            scheduledTime = audioCtx.currentTime;
+            scheduleNotes();
+            return true;
+          }
+        },
+        stop() {
+          playing = false;
+          clearTimeout(timerId);
+        },
+        isPlaying() { return playing; }
+      };
+    })();
+
+    const bgmBtn = document.getElementById('bgm-btn');
+    bgmBtn.addEventListener('click', () => {
+      const on = BGM.toggle();
+      bgmBtn.textContent = on ? 'BGM: ON' : 'BGM: OFF';
+      bgmBtn.classList.toggle('on', on);
+    });
+
+    // initial draw
+    board = createBoard();
+    draw();
+    drawNext();
+    drawHold();
+  </script>
+</body>
+</html>

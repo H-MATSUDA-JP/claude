@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "live-server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/live-server/live-server.js", "--port=8080", "--no-browser"],
+      "port": 8080
+    },
+    {
+      "name": "serve",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": ["/c", "npx", "serve", "-l", "3000"],
+      "port": 3000
+    },
+    {
+      "name": "python-http",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8000"],
+      "port": 8000
+    }
+  ]
+}
