@@ -10,7 +10,9 @@
       "Bash(netstat -ano)",
       "Bash(ls \"C:/Users/haruh/OneDrive/ドキュメント/FTP/claude_test/node_modules/.bin/live-server\"*)",
       "WebFetch(domain:e-time.jp)",
-      "Bash(node deploy.js)"
+      "Bash(node deploy.js)",
+      "Bash(gh repo:*)",
+      "WebFetch(domain:ja.wikipedia.org)"
     ]
   }
 }

@@ -58,7 +58,8 @@ async function deploy() {
       host,
       user,
       password,
-      secure: true,
+      secure: "implicit",
+      port: 990,
       secureOptions: { rejectUnauthorized: false },
     });
 
@@ -68,29 +69,44 @@ async function deploy() {
 
     console.log("Deploy complete!");
   } catch (err) {
-    console.error("Deploy failed:", err.message);
-
-    // FTPS implicit が失敗した場合、explicit で再試行
-    if (err.message.includes("connect") || err.code === "ETIMEDOUT") {
-      console.log("Retrying with explicit FTPS...");
+    console.error("Deploy failed (implicit FTPS):", err.message);
+    console.log("Retrying with explicit FTPS on port 21...");
+    try {
+      const client2 = new ftp.Client();
+      client2.ftp.verbose = false;
+      await client2.access({
+        host: process.env.FTP_HOST,
+        user: process.env.FTP_USER,
+        password: process.env.FTP_PASS,
+        secure: true,
+        secureOptions: { rejectUnauthorized: false },
+      });
+      const remoteDir = process.env.FTP_REMOTE_DIR || "/";
+      await client2.ensureDir(remoteDir);
+      await uploadDir(client2, __dirname, remoteDir);
+      console.log("Deploy complete! (explicit FTPS)");
+      client2.close();
+    } catch (err2) {
+      console.error("Retry also failed:", err2.message);
+      console.log("Retrying with plain FTP (no encryption)...");
       try {
-        await client.access({
+        const client3 = new ftp.Client();
+        client3.ftp.verbose = false;
+        await client3.access({
           host: process.env.FTP_HOST,
           user: process.env.FTP_USER,
           password: process.env.FTP_PASS,
-          secure: true,
-          secureOptions: { rejectUnauthorized: false },
+          secure: false,
         });
         const remoteDir = process.env.FTP_REMOTE_DIR || "/";
-        await client.ensureDir(remoteDir);
-        await uploadDir(client, __dirname, remoteDir);
-        console.log("Deploy complete! (explicit FTPS)");
-      } catch (err2) {
-        console.error("Retry also failed:", err2.message);
+        await client3.ensureDir(remoteDir);
+        await uploadDir(client3, __dirname, remoteDir);
+        console.log("Deploy complete! (plain FTP)");
+        client3.close();
+      } catch (err3) {
+        console.error("All attempts failed:", err3.message);
         process.exit(1);
       }
-    } else {
-      process.exit(1);
     }
   } finally {
     client.close();

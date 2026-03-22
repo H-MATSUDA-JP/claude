@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>テトリス</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -111,6 +111,130 @@
     .board-wrapper {
       position: relative;
     }
+    /* Touch controls - hidden on desktop */
+    .touch-controls {
+      display: none;
+      width: 100%;
+      max-width: 320px;
+      margin: 0 auto;
+      padding: 8px 0;
+      gap: 8px;
+      flex-direction: column;
+      align-items: center;
+    }
+    .touch-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      width: 100%;
+    }
+    .touch-btn {
+      background: #e37711;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 22px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    .touch-btn:active {
+      background: #dd9933;
+      transform: scale(0.93);
+    }
+    .touch-btn.wide {
+      width: 120px;
+      font-size: 18px;
+    }
+    .touch-btn.small {
+      width: 48px;
+      height: 48px;
+      font-size: 16px;
+    }
+    /* Mobile responsive layout */
+    @media (max-width: 600px) {
+      body {
+        align-items: flex-start;
+        padding: 4px 0;
+      }
+      .game-container {
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 0 4px;
+      }
+      .board-wrapper { order: 1; }
+      .side-panel:first-child { order: 2; }
+      .side-panel:last-of-type { order: 3; }
+      .touch-controls { order: 4; }
+      #game-canvas {
+        width: auto;
+        height: calc(100vh - 240px);
+        max-height: 480px;
+        max-width: calc(100vw - 16px);
+      }
+      .side-panel {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+        min-width: 0;
+        width: 100%;
+        max-width: 340px;
+      }
+      .side-panel .panel-box {
+        padding: 6px 8px;
+        min-width: 60px;
+        flex: 0 1 auto;
+      }
+      .side-panel .panel-box h3 {
+        font-size: 9px;
+        margin-bottom: 3px;
+      }
+      .side-panel .panel-box .value {
+        font-size: 16px;
+      }
+      .side-panel .controls {
+        display: none;
+      }
+      #hold-canvas, #next-canvas {
+        width: 50px;
+        height: 50px;
+      }
+      #start-btn, #bgm-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+        width: auto;
+        min-width: 70px;
+      }
+      .touch-controls {
+        display: flex;
+        max-width: 340px;
+      }
+      .touch-btn {
+        width: 52px;
+        height: 52px;
+        font-size: 20px;
+      }
+      .touch-btn.wide {
+        width: 110px;
+        font-size: 16px;
+      }
+      .touch-btn.small {
+        width: 44px;
+        height: 44px;
+        font-size: 15px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -155,6 +279,19 @@
       </div>
       <button id="start-btn">START</button>
       <button id="bgm-btn">BGM: OFF</button>
+    </div>
+    <div class="touch-controls" id="touch-controls">
+      <div class="touch-row">
+        <button class="touch-btn" id="t-left" aria-label="Left">&#9664;</button>
+        <button class="touch-btn" id="t-down" aria-label="Soft Drop">&#9660;</button>
+        <button class="touch-btn" id="t-rotate" aria-label="Rotate">&#9650;</button>
+        <button class="touch-btn" id="t-right" aria-label="Right">&#9654;</button>
+      </div>
+      <div class="touch-row">
+        <button class="touch-btn small" id="t-hold" aria-label="Hold">H</button>
+        <button class="touch-btn wide" id="t-hard" aria-label="Hard Drop">&#9196; DROP</button>
+        <button class="touch-btn small" id="t-pause" aria-label="Pause">&#9198;</button>
+      </div>
     </div>
   </div>
 
@@ -672,6 +809,49 @@
     draw();
     drawNext();
     drawHold();
+
+    // === Touch Controls ===
+    (function() {
+      // Prevent scrolling on game area and touch controls
+      document.querySelectorAll('#game-canvas, #touch-controls').forEach(function(el) {
+        el.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+      });
+
+      function bindTouch(id, fn) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('touchstart', function(e) {
+          e.preventDefault();
+          if (!started || gameOver) return;
+          fn();
+        }, { passive: false });
+      }
+
+      bindTouch('t-left', function() { moveLeft(); });
+      bindTouch('t-right', function() { moveRight(); });
+      bindTouch('t-rotate', function() { rotatePiece(); });
+      bindTouch('t-down', function() { drop(); score += 1; updateUI(); });
+      bindTouch('t-hard', function() { hardDrop(); });
+      bindTouch('t-hold', function() { holdCurrentPiece(); });
+      bindTouch('t-pause', function() { paused = !paused; });
+
+      // Also handle click for hybrid devices
+      function bindClick(id, fn) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', function(e) {
+          if (!started || gameOver) return;
+          fn();
+        });
+      }
+      bindClick('t-left', function() { moveLeft(); });
+      bindClick('t-right', function() { moveRight(); });
+      bindClick('t-rotate', function() { rotatePiece(); });
+      bindClick('t-down', function() { drop(); score += 1; updateUI(); });
+      bindClick('t-hard', function() { hardDrop(); });
+      bindClick('t-hold', function() { holdCurrentPiece(); });
+      bindClick('t-pause', function() { paused = !paused; });
+    })();
   </script>
 </body>
 </html>
