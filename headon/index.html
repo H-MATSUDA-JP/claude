@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Head-On</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #header {
+      display: none;
+    }
+    canvas {
+      border: none;
+      background: #1a3daa;
+      display: block;
+      image-rendering: pixelated;
+    }
+    #start-screen, #gameover-screen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(20,40,140,0.92);
+      z-index: 10;
+    }
+    #start-screen h1 {
+      font-size: 48px;
+      color: #fff;
+      margin-bottom: 16px;
+      text-shadow: 0 0 20px rgba(255,255,255,0.3);
+    }
+    #start-screen p, #gameover-screen p {
+      font-size: 16px;
+      color: #8cf;
+      margin-bottom: 8px;
+    }
+    #gameover-screen h2 {
+      font-size: 36px;
+      color: #f66;
+      margin-bottom: 16px;
+    }
+    #gameover-screen .score-display {
+      font-size: 24px;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .blink {
+      animation: blink 1s infinite;
+      margin-top: 24px;
+      font-size: 18px;
+      color: #fff;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    #touch-controls {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 12px;
+      z-index: 5;
+    }
+    #touch-controls .row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    #touch-controls button {
+      width: 72px;
+      height: 56px;
+      font-size: 28px;
+      background: rgba(30,60,180,0.5);
+      border: 2px solid #5af;
+      border-radius: 10px;
+      color: #fff;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #touch-controls button:active {
+      background: rgba(30,60,180,0.8);
+    }
+    #speed-btn {
+      width: 156px;
+    }
+    @media (max-width: 600px) {
+      #touch-controls { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <div>SCORE: <span id="score">0</span></div>
+    <div>STAGE: <span id="stage">1</span></div>
+    <div>LIVES: <span id="lives">3</span></div>
+    <div>HI: <span id="hiscore">0</span></div>
+  </div>
+  <canvas id="game"></canvas>
+
+  <div id="start-screen">
+    <h1>HEAD-ON</h1>
+    <p>ドットを全て集めてステージクリア！</p>
+    <p>対向車との正面衝突を避けろ！</p>
+    <p style="margin-top:12px; color:#ccc;">← → レーン変更 ／ ↑ スピードアップ</p>
+    <p class="blink">PRESS SPACE or TAP TO START</p>
+  </div>
+
+  <div id="gameover-screen" style="display:none;">
+    <h2>GAME OVER</h2>
+    <div class="score-display">SCORE: <span id="final-score">0</span></div>
+    <p class="blink">PRESS SPACE or TAP TO RESTART</p>
+  </div>
+
+  <div id="touch-controls">
+    <div class="row">
+      <button id="speed-btn">⬆ SPEED</button>
+    </div>
+    <div class="row">
+      <button id="left-btn">◀</button>
+      <button id="right-btn">▶</button>
+    </div>
+  </div>
+
+  <script>
+    // --- Canvas Setup ---
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = 640;
+    const H = 480;
+    canvas.width = W;
+    canvas.height = H;
+
+    // Responsive scaling
+    function resizeCanvas() {
+      const maxW = window.innerWidth - 20;
+      const maxH = window.innerHeight - 40;
+      const scale = Math.min(maxW / W, maxH / H, 1);
+      canvas.style.width = (W * scale) + 'px';
+      canvas.style.height = (H * scale) + 'px';
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- Audio ---
+    let audioCtx = null;
+    function ensureAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playSound(freq, dur, type = 'square', vol = 0.15) {
+      ensureAudio();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    }
+
+    function playDotSound() { playSound(880, 0.08, 'square', 0.1); }
+    function playCrashSound() {
+      playSound(150, 0.4, 'sawtooth', 0.25);
+      setTimeout(() => playSound(80, 0.3, 'sawtooth', 0.2), 100);
+    }
+    function playStageClearSound() {
+      [0, 100, 200, 300, 400].forEach((d, i) =>
+        setTimeout(() => playSound(440 + i * 110, 0.15, 'square', 0.12), d)
+      );
+    }
+    function playEngineHum() {
+      // Continuous engine sound simulated via short ticks
+    }
+
+    // --- Track Configuration ---
+    // The track is a rectangle with nearly square corners (like original)
+    const LANE_COUNT = 4;
+    const TRACK_MARGIN_X = 40;
+    const TRACK_MARGIN_Y = 30;
+    const LANE_SPACING = 26; // distance between lane centers
+    const CORNER_SEGMENTS = 4; // few segments = angular corners like original
+
+    // Build track path for each lane as an array of {x, y} points
+    function buildLanePath(laneIndex) {
+      const offsetX = TRACK_MARGIN_X + laneIndex * LANE_SPACING;
+      const offsetY = TRACK_MARGIN_Y + laneIndex * LANE_SPACING;
+      const left = offsetX;
+      const right = W - offsetX;
+      const top = offsetY;
+      const bottom = H - offsetY;
+      const r = 12 - laneIndex * 2; // very small corner radius (angular)
+      const clampedR = Math.max(r, 4);
+
+      const points = [];
+      const segs = CORNER_SEGMENTS;
+      const sectionMidIndices = [];
+
+      // Top edge
+      const topLen = (right - clampedR) - (left + clampedR);
+      const topSegs = Math.max(Math.round(topLen / 16), 4);
+      for (let i = 0; i <= topSegs; i++) {
+        points.push({ x: left + clampedR + (topLen * i / topSegs), y: top });
+      }
+      sectionMidIndices.push(Math.round(topSegs / 2));
+
+      // Top-right corner
+      for (let i = 1; i <= segs; i++) {
+        const a = -Math.PI / 2 + (Math.PI / 2) * i / segs;
+        points.push({ x: right - clampedR + Math.cos(a) * clampedR, y: top + clampedR + Math.sin(a) * clampedR });
+      }
+      // Right edge
+      const rightLen = (bottom - clampedR) - (top + clampedR);
+      const rightSegs = Math.max(Math.round(rightLen / 16), 4);
+      const rightStartIdx = points.length;
+      for (let i = 1; i <= rightSegs; i++) {
+        points.push({ x: right, y: top + clampedR + (rightLen * i / rightSegs) });
+      }
+      sectionMidIndices.push(rightStartIdx + Math.round(rightSegs / 2) - 1);
+
+      // Bottom-right corner
+      for (let i = 1; i <= segs; i++) {
+        const a = 0 + (Math.PI / 2) * i / segs;
+        points.push({ x: right - clampedR + Math.cos(a) * clampedR, y: bottom - clampedR + Math.sin(a) * clampedR });
+      }
+      // Bottom edge (right to left)
+      const botLen = (right - clampedR) - (left + clampedR);
+      const botSegs = Math.max(Math.round(botLen / 16), 4);
+      const botStartIdx = points.length;
+      for (let i = 1; i <= botSegs; i++) {
+        points.push({ x: right - clampedR - (botLen * i / botSegs), y: bottom });
+      }
+      sectionMidIndices.push(botStartIdx + Math.round(botSegs / 2) - 1);
+
+      // Bottom-left corner
+      for (let i = 1; i <= segs; i++) {
+        const a = Math.PI / 2 + (Math.PI / 2) * i / segs;
+        points.push({ x: left + clampedR + Math.cos(a) * clampedR, y: bottom - clampedR + Math.sin(a) * clampedR });
+      }
+      // Left edge (bottom to top)
+      const leftLen = (bottom - clampedR) - (top + clampedR);
+      const leftSegs = Math.max(Math.round(leftLen / 16), 4);
+      const leftStartIdx = points.length;
+      for (let i = 1; i <= leftSegs; i++) {
+        points.push({ x: left, y: bottom - clampedR - (leftLen * i / leftSegs) });
+      }
+      sectionMidIndices.push(leftStartIdx + Math.round(leftSegs / 2) - 1);
+
+      // Top-left corner
+      for (let i = 1; i <= segs; i++) {
+        const a = Math.PI + (Math.PI / 2) * i / segs;
+        points.push({ x: left + clampedR + Math.cos(a) * clampedR, y: top + clampedR + Math.sin(a) * clampedR });
+      }
+
+      // Compute cumulative distances
+      let totalDist = 0;
+      const dists = [0];
+      for (let i = 1; i < points.length; i++) {
+        const dx = points[i].x - points[i-1].x;
+        const dy = points[i].y - points[i-1].y;
+        totalDist += Math.sqrt(dx * dx + dy * dy);
+        dists.push(totalDist);
+      }
+
+      const changeZones = sectionMidIndices.map(idx => dists[idx]);
+      return { points, dists, totalDist, changeZones };
+    }
+
+    // Get position + angle on lane at distance t (0..totalDist)
+    function getPosOnLane(lane, t) {
+      const { points, dists, totalDist } = lane;
+      const wrappedT = ((t % totalDist) + totalDist) % totalDist;
+      for (let i = 1; i < points.length; i++) {
+        if (wrappedT <= dists[i]) {
+          const segLen = dists[i] - dists[i-1];
+          const frac = segLen > 0 ? (wrappedT - dists[i-1]) / segLen : 0;
+          const x = points[i-1].x + (points[i].x - points[i-1].x) * frac;
+          const y = points[i-1].y + (points[i].y - points[i-1].y) * frac;
+          const angle = Math.atan2(points[i].y - points[i-1].y, points[i].x - points[i-1].x);
+          return { x, y, angle };
+        }
+      }
+      // Wrap-around: between last and first point
+      const lastP = points[points.length - 1];
+      const firstP = points[0];
+      const angle = Math.atan2(firstP.y - lastP.y, firstP.x - lastP.x);
+      return { x: lastP.x, y: lastP.y, angle };
+    }
+
+    // --- Game State ---
+    const lanes = [];
+    for (let i = 0; i < LANE_COUNT; i++) {
+      lanes.push(buildLanePath(i));
+    }
+
+    // Lane-change zone threshold (how close to a zone you must be)
+    const CHANGE_ZONE_RADIUS = 20;
+
+    // Check if a car at position t on a given lane is near a lane-change zone
+    function isNearChangeZone(laneIdx, t) {
+      const lane = lanes[laneIdx];
+      const totalDist = lane.totalDist;
+      const wrappedT = ((t % totalDist) + totalDist) % totalDist;
+      for (const zoneT of lane.changeZones) {
+        let diff = Math.abs(wrappedT - zoneT);
+        if (diff > totalDist / 2) diff = totalDist - diff; // wrap-around
+        if (diff < CHANGE_ZONE_RADIUS) return true;
+      }
+      return false;
+    }
+
+    // Dots: place evenly along each lane
+    const DOT_SPACING = 30;
+    let dots = [];
+
+    function initDots() {
+      dots = [];
+      for (let li = 0; li < LANE_COUNT; li++) {
+        const lane = lanes[li];
+        const count = Math.floor(lane.totalDist / DOT_SPACING);
+        for (let i = 0; i < count; i++) {
+          const t = (i / count) * lane.totalDist;
+          dots.push({ lane: li, t, collected: false });
+        }
+      }
+    }
+
+    let score = 0;
+    let lives = 3;
+    let stage = 1;
+    let hiScore = parseInt(localStorage.getItem('headon_hiscore') || '0');
+    let gameState = 'start'; // 'start', 'playing', 'crash', 'stageclear', 'gameover'
+    let crashTimer = 0;
+    let stageClearTimer = 0;
+
+    // Player
+    const player = {
+      lane: 0,
+      t: 0,
+      speed: 1.8,
+      baseSpeed: 1.8,
+      boosting: false,
+      targetLane: 0,
+      laneTransition: 0,
+      x: 0, y: 0, angle: 0
+    };
+
+    // Enemies
+    let enemies = [];
+
+    function createEnemy(lane, tOffset) {
+      return {
+        lane,
+        t: tOffset,
+        speed: 1.4,
+        baseSpeed: 1.4,
+        targetLane: lane,
+        laneTransition: 0,
+        x: 0, y: 0, angle: 0,
+        changeTimer: 0,
+        changeCooldown: 120 + Math.random() * 180
+      };
+    }
+
+    function initStage() {
+      player.lane = 0;
+      player.targetLane = 0;
+      player.laneTransition = 0;
+      player.t = 0;
+      player.baseSpeed = 1.8 + stage * 0.15;
+      player.speed = player.baseSpeed;
+      player.boosting = false;
+
+      enemies = [];
+      // Stage 1: 1 enemy, later stages add more
+      const enemyCount = Math.min(stage, 3);
+      for (let i = 0; i < enemyCount; i++) {
+        const eLane = i % LANE_COUNT;
+        const eT = lanes[eLane].totalDist * (0.5 + i * 0.2);
+        const e = createEnemy(eLane, eT);
+        e.baseSpeed = 1.4 + stage * 0.12 + i * 0.2;
+        e.speed = e.baseSpeed;
+        enemies.push(e);
+      }
+
+      initDots();
+    }
+
+    function resetGame() {
+      score = 0;
+      lives = 3;
+      stage = 1;
+      initStage();
+      updateUI();
+    }
+
+    function updateUI() {
+      document.getElementById('score').textContent = score;
+      document.getElementById('stage').textContent = stage;
+      document.getElementById('lives').textContent = lives;
+      document.getElementById('hiscore').textContent = hiScore;
+    }
+
+    // --- Input ---
+    const keys = {};
+    document.addEventListener('keydown', (e) => {
+      keys[e.key] = true;
+      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+      }
+      if (gameState === 'start' && e.key === ' ') {
+        ensureAudio();
+        gameState = 'playing';
+        resetGame();
+        document.getElementById('start-screen').style.display = 'none';
+      }
+      if (gameState === 'gameover' && e.key === ' ') {
+        gameState = 'playing';
+        resetGame();
+        document.getElementById('gameover-screen').style.display = 'none';
+      }
+    });
+    document.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+    // Lane change input
+    let laneChangeQueued = null;
+
+    function tryLaneChange(direction) {
+      if (player.laneTransition !== 0) return false;
+      if (!isNearChangeZone(player.lane, player.t)) return false;
+      const newLane = player.lane + direction;
+      if (newLane < 0 || newLane >= LANE_COUNT) return false;
+      player.targetLane = newLane;
+      player.laneTransition = 1.0;
+      return true;
+    }
+
+    function handleLaneInput() {
+      if (gameState !== 'playing') return;
+
+      if (keys['ArrowLeft'] || keys['ArrowUp']) {
+        tryLaneChange(-1); // outer lane
+        keys['ArrowLeft'] = false;
+        keys['ArrowUp'] = false;
+      }
+      if (keys['ArrowRight'] || keys['ArrowDown']) {
+        tryLaneChange(1); // inner lane
+        keys['ArrowRight'] = false;
+        keys['ArrowDown'] = false;
+      }
+    }
+
+    // Touch controls
+    let touchLane = null;
+
+    function setupTouchControls() {
+      const leftBtn = document.getElementById('left-btn');
+      const rightBtn = document.getElementById('right-btn');
+      const speedBtn = document.getElementById('speed-btn');
+
+      function touchHandler(action) {
+        return (e) => {
+          e.preventDefault();
+          if (gameState === 'playing') action();
+        };
+      }
+
+      leftBtn.addEventListener('touchstart', touchHandler(() => {
+        tryLaneChange(-1);
+      }));
+      rightBtn.addEventListener('touchstart', touchHandler(() => {
+        tryLaneChange(1);
+      }));
+      speedBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        player.boosting = true;
+      });
+      speedBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        player.boosting = false;
+      });
+
+      // Tap to start
+      canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (gameState === 'start') {
+          ensureAudio();
+          gameState = 'playing';
+          resetGame();
+          document.getElementById('start-screen').style.display = 'none';
+        }
+        if (gameState === 'gameover') {
+          gameState = 'playing';
+          resetGame();
+          document.getElementById('gameover-screen').style.display = 'none';
+        }
+      });
+
+      canvas.addEventListener('click', () => {
+        if (gameState === 'start') {
+          ensureAudio();
+          gameState = 'playing';
+          resetGame();
+          document.getElementById('start-screen').style.display = 'none';
+        }
+        if (gameState === 'gameover') {
+          gameState = 'playing';
+          resetGame();
+          document.getElementById('gameover-screen').style.display = 'none';
+        }
+      });
+    }
+    setupTouchControls();
+
+    // Speed boost with spacebar
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp' && gameState === 'playing') player.boosting = true;
+    });
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'ArrowUp') player.boosting = false;
+    });
+
+    // --- Collision Detection ---
+    function checkCollision(p, e) {
+      const dx = p.x - e.x;
+      const dy = p.y - e.y;
+      return Math.sqrt(dx * dx + dy * dy) < 18;
+    }
+
+    // --- Map player t to equivalent t on another lane ---
+    function mapTToLane(fromLane, toLane, t) {
+      const ratio = t / lanes[fromLane].totalDist;
+      return ratio * lanes[toLane].totalDist;
+    }
+
+    // --- Enemy AI ---
+    function updateEnemyAI(enemy, dt) {
+      if (enemy.laneTransition !== 0) return;
+      if (!isNearChangeZone(enemy.lane, enemy.t)) return;
+
+      enemy.changeTimer++;
+      if (enemy.changeTimer >= enemy.changeCooldown) {
+        const playerDist = Math.abs(enemy.x - player.x) + Math.abs(enemy.y - player.y);
+        let changed = false;
+        if (enemy.lane === player.lane && playerDist < 200) {
+          // Dodge player
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const newLane = enemy.lane + dir;
+          if (newLane >= 0 && newLane < LANE_COUNT) {
+            enemy.targetLane = newLane;
+            enemy.laneTransition = 1.0;
+            changed = true;
+          }
+        } else if (Math.random() < 0.3) {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const newLane = enemy.lane + dir;
+          if (newLane >= 0 && newLane < LANE_COUNT) {
+            enemy.targetLane = newLane;
+            enemy.laneTransition = 1.0;
+            changed = true;
+          }
+        }
+        enemy.changeTimer = 0;
+        enemy.changeCooldown = 90 + Math.random() * 160;
+      }
+    }
+
+    // --- Game Update ---
+    let engineSoundTimer = 0;
+
+    function update() {
+      if (gameState !== 'playing' && gameState !== 'crash' && gameState !== 'stageclear') return;
+
+      if (gameState === 'crash') {
+        crashTimer--;
+        if (crashTimer <= 0) {
+          lives--;
+          updateUI();
+          if (lives <= 0) {
+            gameState = 'gameover';
+            if (score > hiScore) {
+              hiScore = score;
+              localStorage.setItem('headon_hiscore', hiScore);
+            }
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('gameover-screen').style.display = 'flex';
+            updateUI();
+          } else {
+            // Respawn player
+            player.t = 0;
+            player.lane = 0;
+            player.targetLane = 0;
+            player.laneTransition = 0;
+            // Reset enemies to safe positions
+            enemies.forEach((e, i) => {
+              e.t = lanes[e.lane].totalDist * (0.5 + i * 0.15);
+              e.laneTransition = 0;
+              e.targetLane = e.lane;
+            });
+            gameState = 'playing';
+          }
+        }
+        return;
+      }
+
+      if (gameState === 'stageclear') {
+        stageClearTimer--;
+        if (stageClearTimer <= 0) {
+          stage++;
+          initStage();
+          updateUI();
+          gameState = 'playing';
+        }
+        return;
+      }
+
+      // Handle lane change input
+      handleLaneInput();
+
+      // Player speed
+      player.speed = player.boosting ? player.baseSpeed * 1.6 : player.baseSpeed;
+
+      // Move player (clockwise)
+      player.t += player.speed;
+      if (player.t >= lanes[player.lane].totalDist) {
+        player.t -= lanes[player.lane].totalDist;
+      }
+
+      // Lane transition
+      if (player.laneTransition > 0) {
+        player.laneTransition -= 0.08;
+        if (player.laneTransition <= 0) {
+          player.laneTransition = 0;
+          // Map t from old lane to new lane
+          player.t = mapTToLane(player.lane, player.targetLane, player.t);
+          player.lane = player.targetLane;
+        }
+      }
+
+      // Compute player visual position
+      if (player.laneTransition > 0) {
+        const pos1 = getPosOnLane(lanes[player.lane], player.t);
+        const mappedT = mapTToLane(player.lane, player.targetLane, player.t);
+        const pos2 = getPosOnLane(lanes[player.targetLane], mappedT);
+        const frac = 1 - player.laneTransition;
+        player.x = pos1.x + (pos2.x - pos1.x) * frac;
+        player.y = pos1.y + (pos2.y - pos1.y) * frac;
+        player.angle = pos1.angle;
+      } else {
+        const pos = getPosOnLane(lanes[player.lane], player.t);
+        player.x = pos.x;
+        player.y = pos.y;
+        player.angle = pos.angle;
+      }
+
+      // Move enemies (counter-clockwise, so subtract)
+      enemies.forEach(e => {
+        e.speed = e.baseSpeed;
+        e.t -= e.speed;
+        if (e.t < 0) e.t += lanes[e.lane].totalDist;
+
+        // Lane transition
+        if (e.laneTransition > 0) {
+          e.laneTransition -= 0.08;
+          if (e.laneTransition <= 0) {
+            e.laneTransition = 0;
+            e.t = mapTToLane(e.lane, e.targetLane, e.t);
+            e.lane = e.targetLane;
+          }
+        }
+
+        // Compute position
+        if (e.laneTransition > 0) {
+          const pos1 = getPosOnLane(lanes[e.lane], e.t);
+          const mappedT = mapTToLane(e.lane, e.targetLane, e.t);
+          const pos2 = getPosOnLane(lanes[e.targetLane], mappedT);
+          const frac = 1 - e.laneTransition;
+          e.x = pos1.x + (pos2.x - pos1.x) * frac;
+          e.y = pos1.y + (pos2.y - pos1.y) * frac;
+          e.angle = pos1.angle + Math.PI; // facing opposite direction
+        } else {
+          const pos = getPosOnLane(lanes[e.lane], e.t);
+          e.x = pos.x;
+          e.y = pos.y;
+          e.angle = pos.angle + Math.PI;
+        }
+
+        updateEnemyAI(e);
+      });
+
+      // Check dot collection
+      let collected = false;
+      dots.forEach(d => {
+        if (d.collected) return;
+        const effectiveLane = player.laneTransition > 0 ?
+          (player.laneTransition > 0.5 ? player.lane : player.targetLane) : player.lane;
+        if (d.lane !== effectiveLane) return;
+        const dotPos = getPosOnLane(lanes[d.lane], d.t);
+        const dx = player.x - dotPos.x;
+        const dy = player.y - dotPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 16) {
+          d.collected = true;
+          score += 10;
+          collected = true;
+          playDotSound();
+        }
+      });
+      if (collected) updateUI();
+
+      // Check if all dots collected
+      if (dots.every(d => d.collected)) {
+        gameState = 'stageclear';
+        stageClearTimer = 90;
+        score += 100 * stage;
+        updateUI();
+        playStageClearSound();
+        return;
+      }
+
+      // Check collision with enemies
+      for (const e of enemies) {
+        if (checkCollision(player, e)) {
+          gameState = 'crash';
+          crashTimer = 60;
+          playCrashSound();
+          return;
+        }
+      }
+
+      // Engine sound
+      engineSoundTimer++;
+      if (engineSoundTimer % 15 === 0) {
+        playSound(80 + player.speed * 20, 0.05, 'triangle', 0.03);
+      }
+    }
+
+    // --- Drawing ---
+    const BG_COLOR = '#2244cc';     // blue background (brighter like original)
+    const TRACK_LINE_COLOR = '#0a1860'; // dark blue track border lines
+    const DOT_COLOR = '#ffffff';   // white dots like original
+    const LANE_HALF_W = 10;        // half-width of lane path for border drawing
+
+    // Build offset path (inner/outer border of a lane)
+    function getOffsetPath(laneIdx, offset) {
+      // Returns array of {x, y} points offset perpendicular to the lane
+      const lane = lanes[laneIdx];
+      const pts = lane.points;
+      const result = [];
+      for (let i = 0; i < pts.length; i++) {
+        const prev = pts[(i - 1 + pts.length) % pts.length];
+        const curr = pts[i];
+        const next = pts[(i + 1) % pts.length];
+        // Average normal at this point
+        const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y;
+        const dx2 = next.x - curr.x, dy2 = next.y - curr.y;
+        const nx = -(dy1 + dy2) / 2, ny = (dx1 + dx2) / 2;
+        const len = Math.sqrt(nx * nx + ny * ny) || 1;
+        result.push({ x: curr.x + (nx / len) * offset, y: curr.y + (ny / len) * offset });
+      }
+      return result;
+    }
+
+    function drawClosedPath(points, color, lineWidth) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineJoin = 'miter';
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    function drawTrack() {
+      // Draw each lane with borders on both sides (like original)
+      for (let li = 0; li < LANE_COUNT; li++) {
+        const outerPath = getOffsetPath(li, -LANE_HALF_W);
+        const innerPath = getOffsetPath(li, LANE_HALF_W);
+        drawClosedPath(outerPath, TRACK_LINE_COLOR, 2);
+        drawClosedPath(innerPath, TRACK_LINE_COLOR, 2);
+      }
+
+      // Draw center rectangle border (inner area)
+      const innerLane = lanes[LANE_COUNT - 1];
+      const centerPath = getOffsetPath(LANE_COUNT - 1, LANE_HALF_W + 4);
+      ctx.strokeStyle = TRACK_LINE_COLOR;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(centerPath[0].x, centerPath[0].y);
+      for (let i = 1; i < centerPath.length; i++) {
+        ctx.lineTo(centerPath[i].x, centerPath[i].y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    function drawChangeZones() {
+      // Draw perpendicular connectors between all lanes at change points
+      for (let zi = 0; zi < 4; zi++) {
+        // Draw a line from outer border of lane 0 to inner border of lane 3
+        const outerPos = getPosOnLane(lanes[0], lanes[0].changeZones[zi]);
+        const innerPos = getPosOnLane(lanes[LANE_COUNT - 1], lanes[LANE_COUNT - 1].changeZones[zi]);
+
+        // Extend slightly beyond the lanes
+        const dx = innerPos.x - outerPos.x;
+        const dy = innerPos.y - outerPos.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ext = LANE_HALF_W + 2;
+
+        ctx.strokeStyle = TRACK_LINE_COLOR;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(outerPos.x - (dx / len) * ext, outerPos.y - (dy / len) * ext);
+        ctx.lineTo(innerPos.x + (dx / len) * ext, innerPos.y + (dy / len) * ext);
+        ctx.stroke();
+      }
+    }
+
+    function drawDots() {
+      dots.forEach(d => {
+        if (d.collected) return;
+        const pos = getPosOnLane(lanes[d.lane], d.t);
+        ctx.fillStyle = DOT_COLOR;
+        ctx.fillRect(pos.x - 2, pos.y - 2, 4, 4); // square dots like original
+      });
+    }
+
+    function drawCar(x, y, angle, color1, color2, isCrashed) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+
+      if (isCrashed) {
+        const t = crashTimer;
+        ctx.strokeStyle = t % 6 < 3 ? '#ff2200' : '#ffcc00';
+        ctx.lineWidth = 2;
+        const sz = 8 + (60 - t) * 0.15;
+        ctx.beginPath();
+        ctx.moveTo(-sz, -sz); ctx.lineTo(sz, sz);
+        ctx.moveTo(sz, -sz); ctx.lineTo(-sz, sz);
+        ctx.moveTo(-sz, 0); ctx.lineTo(sz, 0);
+        ctx.moveTo(0, -sz); ctx.lineTo(0, sz);
+        ctx.stroke();
+      } else {
+        // Simple retro pixel car
+        ctx.fillStyle = color1;
+        ctx.fillRect(-8, -5, 16, 10);
+        // Front
+        ctx.fillStyle = color2;
+        ctx.fillRect(6, -3, 4, 6);
+        // Rear
+        ctx.fillRect(-10, -3, 3, 6);
+        // Windshield
+        ctx.fillStyle = '#88ccff';
+        ctx.fillRect(2, -3, 3, 6);
+      }
+
+      ctx.restore();
+    }
+
+    function drawCenterInfo() {
+      ctx.textAlign = 'center';
+
+      // Lives as small car icons
+      for (let i = 0; i < lives; i++) {
+        ctx.fillStyle = '#5af';
+        ctx.fillRect(W / 2 - 20 + i * 16, H / 2 - 28, 10, 6);
+        ctx.fillStyle = '#38f';
+        ctx.fillRect(W / 2 - 20 + i * 16 + 7, H / 2 - 27, 3, 4);
+      }
+
+      // Score
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 20px Courier New';
+      ctx.fillText(String(score).padStart(6, '0'), W / 2, H / 2 + 2);
+
+      // Stage
+      ctx.font = '12px Courier New';
+      ctx.fillStyle = '#8af';
+      ctx.fillText('STAGE ' + stage, W / 2, H / 2 + 20);
+
+      // Hi score at top center
+      ctx.fillStyle = '#ff6666';
+      ctx.font = 'bold 14px Courier New';
+      ctx.fillText('HI ' + String(hiScore).padStart(6, '0'), W / 2, 18);
+    }
+
+    function drawStageClear() {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 24px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('STAGE CLEAR!', W / 2, H / 2 + 44);
+      ctx.font = '14px Courier New';
+      ctx.fillStyle = '#8cf';
+      ctx.fillText(`BONUS +${100 * stage}`, W / 2, H / 2 + 64);
+    }
+
+    function draw() {
+      // Blue background
+      ctx.fillStyle = BG_COLOR;
+      ctx.fillRect(0, 0, W, H);
+
+      drawTrack();
+      drawChangeZones();
+      drawDots();
+      drawCenterInfo();
+
+      if (gameState === 'crash') {
+        drawCar(player.x, player.y, player.angle, '#5af', '#38f', true);
+      } else if (gameState === 'playing') {
+        drawCar(player.x, player.y, player.angle, '#5af', '#38f', false);
+      }
+
+      enemies.forEach(e => {
+        if (gameState === 'crash') {
+          const dx = player.x - e.x;
+          const dy = player.y - e.y;
+          const crashed = Math.sqrt(dx * dx + dy * dy) < 20;
+          drawCar(e.x, e.y, e.angle, '#f44', '#d22', crashed);
+        } else {
+          drawCar(e.x, e.y, e.angle, '#f44', '#d22', false);
+        }
+      });
+
+      if (gameState === 'stageclear') {
+        drawStageClear();
+      }
+    }
+
+    // --- Game Loop ---
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // --- Init ---
+    initStage();
+    updateUI();
+    document.getElementById('hiscore').textContent = hiScore;
+    gameLoop();
+  </script>
+</body>
+</html>
