@@ -229,6 +229,23 @@ function playUfoHit() {
   osc.stop(audioCtx.currentTime + 0.5);
 }
 
+function playExtraLife() {
+  ensureAudio();
+  [523, 659, 784, 1047].forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    const t = audioCtx.currentTime + i * 0.1;
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.start(t);
+    osc.stop(t + 0.12);
+  });
+}
+
 // ── Invader Pixel Art ──
 // Each invader type has 2 animation frames, drawn as pixel grids
 const invaderSprites = {
@@ -312,11 +329,13 @@ const invaderColors = {
 const invaderPoints = { squid: 30, crab: 20, octopus: 10 };
 
 // ── Game State ──
-let state = 'start'; // start, playing, gameover
+let state = 'start'; // start, playing, dying, gameover
 let score = 0;
 let hiScore = parseInt(localStorage.getItem('invaderHiScore') || '0');
 let lives = 3;
 let level = 1;
+let deathTimer = 0;
+let extraLifeAwarded = false;
 
 // Player
 const player = { x: W / 2 - 13, y: H - 40, w: 26, h: 16, speed: 4 };
@@ -339,7 +358,7 @@ let enemyShootTimer = 0;
 // UFO
 let ufo = null;
 let ufoTimer = 0;
-const ufoScores = [50, 100, 150, 200, 300];
+const ufoScores = [50, 100, 150, 300]; // original score table
 
 // Shields
 let shields = [];
@@ -357,13 +376,16 @@ document.addEventListener('keydown', e => {
       state = 'playing';
       document.getElementById('startScreen').style.display = 'none';
       initGame();
+      keys['Space'] = false; // don't fire on the starting keypress
     } else if (state === 'gameover') {
       state = 'playing';
       document.getElementById('gameOverScreen').style.display = 'none';
       score = 0;
       lives = 3;
       level = 1;
+      extraLifeAwarded = false;
       initGame();
+      keys['Space'] = false;
     }
   }
 });
@@ -371,14 +393,22 @@ document.addEventListener('keyup', e => { keys[e.code] = false; });
 
 // ── Touch Input ──
 const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+let moveTouchId = null;
 let touchStartX = null;
 let touchStartPlayerX = null;
 let touchMoved = false;
 
 if (isTouchDevice) {
-  document.getElementById('controlHint').textContent = 'スライド : 移動　　タップ : 発射';
+  document.getElementById('controlHint').textContent = 'スライド : 移動　　タップ : 発射（移動中は2本目の指でも発射）';
   document.getElementById('startHint').textContent = 'TAP TO START';
   document.getElementById('retryHint').textContent = 'TAP TO RETRY';
+}
+
+function fireBullet() {
+  if (state === 'playing' && !playerBullet) {
+    playerBullet = { x: player.x + 12, y: player.y - 8 };
+    playShoot();
+  }
 }
 
 function startGameFromTouch() {
@@ -393,6 +423,7 @@ function startGameFromTouch() {
     score = 0;
     lives = 3;
     level = 1;
+    extraLifeAwarded = false;
     initGame();
   }
 }
@@ -405,33 +436,45 @@ function getCanvasScale() {
 
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  const touch = e.touches[0];
-  touchStartX = touch.clientX;
-  touchStartPlayerX = player.x;
-  touchMoved = false;
+  for (const touch of e.changedTouches) {
+    if (moveTouchId === null) {
+      // First finger controls movement
+      moveTouchId = touch.identifier;
+      touchStartX = touch.clientX;
+      touchStartPlayerX = player.x;
+      touchMoved = false;
+    } else {
+      // Additional finger fires while moving
+      fireBullet();
+    }
+  }
 }, { passive: false });
 
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
-  if (touchStartX === null) return;
-  const touch = e.touches[0];
-  const dx = touch.clientX - touchStartX;
-  const scale = getCanvasScale();
-  player.x = touchStartPlayerX + dx * scale;
-  player.x = Math.max(4, Math.min(W - player.w - 4, player.x));
-  if (Math.abs(dx) > 8) touchMoved = true;
+  for (const touch of e.changedTouches) {
+    if (touch.identifier !== moveTouchId) continue;
+    const dx = touch.clientX - touchStartX;
+    const scale = getCanvasScale();
+    player.x = touchStartPlayerX + dx * scale;
+    player.x = Math.max(4, Math.min(W - player.w - 4, player.x));
+    if (Math.abs(dx) > 8) touchMoved = true;
+  }
 }, { passive: false });
 
-canvas.addEventListener('touchend', e => {
+function endTouch(e) {
   e.preventDefault();
-  if (!touchMoved && state === 'playing' && !playerBullet) {
-    playerBullet = { x: player.x + 12, y: player.y - 8 };
-    playShoot();
+  for (const touch of e.changedTouches) {
+    if (touch.identifier !== moveTouchId) continue;
+    if (!touchMoved) fireBullet();
+    moveTouchId = null;
+    touchStartX = null;
+    touchStartPlayerX = null;
+    touchMoved = false;
   }
-  touchStartX = null;
-  touchStartPlayerX = null;
-  touchMoved = false;
-}, { passive: false });
+}
+canvas.addEventListener('touchend', endTouch, { passive: false });
+canvas.addEventListener('touchcancel', endTouch, { passive: false });
 
 // Tap on overlay screens to start/retry
 document.getElementById('startScreen').addEventListener('touchend', e => {
@@ -450,7 +493,8 @@ function initGame() {
   const rowSpacing = 28;
   const totalW = 11 * colSpacing;
   const startX = (W - totalW) / 2;
-  const startY = 64;
+  // Like the original, each wave starts lower (capped so shields stay usable)
+  const startY = 64 + Math.min((level - 1) * 16, 80);
   for (let row = 0; row < 5; row++) {
     for (let col = 0; col < 11; col++) {
       invaders.push({
@@ -541,6 +585,7 @@ function drawSprite(sprite, x, y, color, pixelSize) {
 }
 
 function drawPlayer() {
+  if (state === 'dying') return; // hidden while exploding
   if (playerInvincible > 0 && Math.floor(playerInvincible / 4) % 2) return;
   ctx.fillStyle = '#0f0';
   // Player ship shape
@@ -631,8 +676,48 @@ function drawGround() {
   ctx.fillRect(0, H - 16, W, 1);
 }
 
+function startPlayerDeath() {
+  state = 'dying';
+  deathTimer = 70;
+  playerBullet = null;
+  explosions.push({
+    x: player.x + player.w / 2, y: player.y + player.h / 2,
+    timer: 50, maxTimer: 50,
+    color: '#0f0'
+  });
+  playPlayerDeath();
+}
+
+function checkExtraLife() {
+  if (!extraLifeAwarded && score >= 1500) {
+    extraLifeAwarded = true;
+    lives++;
+    playExtraLife();
+  }
+}
+
 // ── Update ──
 function update() {
+  if (state === 'dying') {
+    // Freeze the action while the player explodes, then respawn
+    deathTimer--;
+    for (let i = explosions.length - 1; i >= 0; i--) {
+      explosions[i].timer--;
+      if (explosions[i].timer <= 0) explosions.splice(i, 1);
+    }
+    if (deathTimer <= 0) {
+      lives--;
+      updateHUD();
+      if (lives <= 0) {
+        gameOver();
+      } else {
+        enemyBullets = [];
+        playerInvincible = 90;
+        state = 'playing';
+      }
+    }
+    return;
+  }
   if (state !== 'playing') return;
 
   // Player movement
@@ -703,6 +788,7 @@ function update() {
           playerBullet.y >= inv.y && playerBullet.y <= inv.y + inv.h) {
         inv.alive = false;
         score += invaderPoints[inv.type];
+        checkExtraLife();
         explosions.push({
           x: inv.x + inv.w / 2, y: inv.y + inv.h / 2,
           timer: 15, maxTimer: 15,
@@ -730,6 +816,7 @@ function update() {
         playerBullet.y >= ufo.y && playerBullet.y <= ufo.y + 17) {
       const pts = ufoScores[Math.floor(Math.random() * ufoScores.length)];
       score += pts;
+      checkExtraLife();
       explosions.push({
         x: ufo.x + 16, y: ufo.y + 8,
         timer: 30, maxTimer: 30,
@@ -788,20 +875,27 @@ function update() {
     enemyBullets[i].y += 3 + level * 0.3;
     const b = enemyBullets[i];
 
+    // vs player bullet (bullets cancel each other, like the original)
+    if (playerBullet &&
+        Math.abs((b.x + 1) - (playerBullet.x + 1)) < 5 &&
+        b.y + 8 >= playerBullet.y && b.y <= playerBullet.y + 8) {
+      explosions.push({
+        x: b.x + 1, y: b.y + 4,
+        timer: 12, maxTimer: 12,
+        color: '#fff'
+      });
+      playerBullet = null;
+      enemyBullets.splice(i, 1);
+      continue;
+    }
+
     // vs player
     if (playerInvincible <= 0 &&
         b.x >= player.x && b.x <= player.x + player.w &&
         b.y >= player.y && b.y <= player.y + player.h) {
-      lives--;
-      playerInvincible = 120;
-      playPlayerDeath();
       enemyBullets.splice(i, 1);
-      updateHUD();
-      if (lives <= 0) {
-        gameOver();
-        return;
-      }
-      continue;
+      startPlayerDeath();
+      return;
     }
 
     // vs shields
@@ -889,7 +983,7 @@ function gameLoop() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  if (state === 'playing') {
+  if (state === 'playing' || state === 'dying') {
     update();
     drawGround();
     drawShields();
