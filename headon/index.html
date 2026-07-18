@@ -18,12 +18,7 @@
       overflow: hidden;
       touch-action: none;
     }
-    #header {
-      display: none;
-    }
     canvas {
-      border: none;
-      background: #1a3daa;
       display: block;
       image-rendering: pixelated;
     }
@@ -34,95 +29,83 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: rgba(20,40,140,0.92);
+      background: rgba(0,0,0,0.8);
       z-index: 10;
+      text-align: center;
     }
     #start-screen h1 {
-      font-size: 48px;
-      color: #fff;
-      margin-bottom: 16px;
-      text-shadow: 0 0 20px rgba(255,255,255,0.3);
+      font-size: 46px;
+      color: #ffd800;
+      margin-bottom: 20px;
+      text-shadow: 0 0 20px rgba(255,216,0,0.5);
+      letter-spacing: 4px;
     }
     #start-screen p, #gameover-screen p {
-      font-size: 16px;
-      color: #8cf;
-      margin-bottom: 8px;
+      font-size: 14px;
+      margin: 4px 12px;
+      color: #ddd;
+      line-height: 1.6;
     }
     #gameover-screen h2 {
-      font-size: 36px;
-      color: #f66;
+      font-size: 40px;
+      color: #ff3333;
       margin-bottom: 16px;
+      letter-spacing: 4px;
     }
-    #gameover-screen .score-display {
-      font-size: 24px;
-      color: #fff;
-      margin-bottom: 16px;
+    .score-display {
+      font-size: 20px;
+      color: #ffd800;
+      margin: 12px 0;
     }
     .blink {
-      animation: blink 1s infinite;
-      margin-top: 24px;
-      font-size: 18px;
-      color: #fff;
+      animation: blink 1s step-start infinite;
+      margin-top: 20px !important;
+      color: #fff !important;
+      font-size: 16px !important;
     }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
+    @keyframes blink { 50% { opacity: 0; } }
     #touch-controls {
       display: none;
       position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      padding: 12px;
+      bottom: 12px;
+      left: 0; right: 0;
+      justify-content: center;
+      gap: 14px;
       z-index: 5;
     }
-    #touch-controls .row {
-      display: flex;
-      justify-content: center;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
     #touch-controls button {
-      width: 72px;
-      height: 56px;
-      font-size: 28px;
-      background: rgba(30,60,180,0.5);
-      border: 2px solid #5af;
-      border-radius: 10px;
+      width: 90px;
+      height: 64px;
+      font-size: 16px;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      background: rgba(255,255,255,0.12);
       color: #fff;
-      cursor: pointer;
+      border: 2px solid #888;
+      border-radius: 12px;
+      touch-action: none;
       user-select: none;
       -webkit-user-select: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
     #touch-controls button:active {
-      background: rgba(30,60,180,0.8);
+      background: rgba(255,216,0,0.3);
+      border-color: #ffd800;
     }
-    #speed-btn {
-      width: 156px;
-    }
-    @media (max-width: 600px) {
-      #touch-controls { display: block; }
+    @media (hover: none) and (pointer: coarse) {
+      #touch-controls { display: flex; }
     }
   </style>
 </head>
 <body>
-  <div id="header">
-    <div>SCORE: <span id="score">0</span></div>
-    <div>STAGE: <span id="stage">1</span></div>
-    <div>LIVES: <span id="lives">3</span></div>
-    <div>HI: <span id="hiscore">0</span></div>
-  </div>
   <canvas id="game"></canvas>
 
   <div id="start-screen">
     <h1>HEAD-ON</h1>
     <p>ドットを全て集めてステージクリア！</p>
-    <p>対向車との正面衝突を避けろ！</p>
-    <p style="margin-top:12px; color:#ccc;">← → レーン変更 ／ ↑ スピードアップ</p>
+    <p>レーン変更は各辺中央の「切れ目」でのみ可能</p>
+    <p>矢印キー＝レバー（中心向き＝内側／外向き＝外側）</p>
+    <p>スペース＝加速（低速時2レーン・加速中1レーンまで変更可）</p>
+    <p style="color:#ff6666;">敵車通過後の赤ドットは2倍得点！</p>
     <p class="blink">PRESS SPACE or TAP TO START</p>
   </div>
 
@@ -133,28 +116,23 @@
   </div>
 
   <div id="touch-controls">
-    <div class="row">
-      <button id="speed-btn">⬆ SPEED</button>
-    </div>
-    <div class="row">
-      <button id="left-btn">◀</button>
-      <button id="right-btn">▶</button>
-    </div>
+    <button id="out-btn">外側</button>
+    <button id="speed-btn">加速</button>
+    <button id="in-btn">内側</button>
   </div>
 
   <script>
     // --- Canvas Setup ---
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
-    const W = 640;
-    const H = 480;
+    const W = 560;
+    const H = 560;
     canvas.width = W;
     canvas.height = H;
 
-    // Responsive scaling
     function resizeCanvas() {
-      const maxW = window.innerWidth - 20;
-      const maxH = window.innerHeight - 40;
+      const maxW = window.innerWidth - 10;
+      const maxH = window.innerHeight - 10;
       const scale = Math.min(maxW / W, maxH / H, 1);
       canvas.style.width = (W * scale) + 'px';
       canvas.style.height = (H * scale) + 'px';
@@ -167,9 +145,8 @@
     function ensureAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-
     function playSound(freq, dur, type = 'square', vol = 0.15) {
-      ensureAudio();
+      if (!audioCtx) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = type;
@@ -181,173 +158,122 @@
       osc.start();
       osc.stop(audioCtx.currentTime + dur);
     }
-
-    function playDotSound() { playSound(880, 0.08, 'square', 0.1); }
+    function playDotSound() { playSound(1200, 0.04, 'square', 0.08); }
+    function playRedDotSound() { playSound(1600, 0.06, 'square', 0.1); }
     function playCrashSound() {
       playSound(150, 0.4, 'sawtooth', 0.25);
-      setTimeout(() => playSound(80, 0.3, 'sawtooth', 0.2), 100);
+      setTimeout(() => playSound(80, 0.35, 'sawtooth', 0.2), 100);
     }
     function playStageClearSound() {
       [0, 100, 200, 300, 400].forEach((d, i) =>
         setTimeout(() => playSound(440 + i * 110, 0.15, 'square', 0.12), d)
       );
     }
-    function playEngineHum() {
-      // Continuous engine sound simulated via short ticks
-    }
 
-    // --- Track Configuration ---
-    // The track is a rectangle with nearly square corners (like original)
-    const LANE_COUNT = 4;
-    const TRACK_MARGIN_X = 40;
-    const TRACK_MARGIN_Y = 30;
-    const LANE_SPACING = 26; // distance between lane centers
-    const CORNER_SEGMENTS = 4; // few segments = angular corners like original
+    // --- Colors (faithful to original: blue bg, white lines, yellow player, red enemy) ---
+    const COLOR_BG = '#2222cc';
+    const COLOR_LINE = '#ffffff';
+    const COLOR_DOT = '#ffffff';
+    const COLOR_RED_DOT = '#ff4040';
+    const COLOR_PLAYER = '#ffd800';
+    const COLOR_ENEMY = '#ff2020';
 
-    // Build track path for each lane as an array of {x, y} points
-    function buildLanePath(laneIndex) {
-      const offsetX = TRACK_MARGIN_X + laneIndex * LANE_SPACING;
-      const offsetY = TRACK_MARGIN_Y + laneIndex * LANE_SPACING;
-      const left = offsetX;
-      const right = W - offsetX;
-      const top = offsetY;
-      const bottom = H - offsetY;
-      const r = 12 - laneIndex * 2; // very small corner radius (angular)
-      const clampedR = Math.max(r, 4);
+    // --- Track Geometry ---
+    // 5 concentric rectangular lanes, square corners.
+    // Path is counter-clockwise (visually): bottom→right, right side→up, top→left, left side→down.
+    const LANE_COUNT = 5;
+    const MARGIN = 64;       // outer boundary offset
+    const LANE_W = 30;       // lane width
+    const GAP_HALF = 26;     // half-width of divider gap (lane-change zone) at side midpoints
+    const ZONE_HALF = 24;    // half-length of change zone in t-space
 
-      const points = [];
-      const segs = CORNER_SEGMENTS;
-      const sectionMidIndices = [];
+    // Lane center offset for lane k (0 = outermost, 4 = innermost)
+    function laneOffset(k) { return MARGIN + LANE_W * (k + 0.5); }
 
-      // Top edge
-      const topLen = (right - clampedR) - (left + clampedR);
-      const topSegs = Math.max(Math.round(topLen / 16), 4);
-      for (let i = 0; i <= topSegs; i++) {
-        points.push({ x: left + clampedR + (topLen * i / topSegs), y: top });
-      }
-      sectionMidIndices.push(Math.round(topSegs / 2));
-
-      // Top-right corner
-      for (let i = 1; i <= segs; i++) {
-        const a = -Math.PI / 2 + (Math.PI / 2) * i / segs;
-        points.push({ x: right - clampedR + Math.cos(a) * clampedR, y: top + clampedR + Math.sin(a) * clampedR });
-      }
-      // Right edge
-      const rightLen = (bottom - clampedR) - (top + clampedR);
-      const rightSegs = Math.max(Math.round(rightLen / 16), 4);
-      const rightStartIdx = points.length;
-      for (let i = 1; i <= rightSegs; i++) {
-        points.push({ x: right, y: top + clampedR + (rightLen * i / rightSegs) });
-      }
-      sectionMidIndices.push(rightStartIdx + Math.round(rightSegs / 2) - 1);
-
-      // Bottom-right corner
-      for (let i = 1; i <= segs; i++) {
-        const a = 0 + (Math.PI / 2) * i / segs;
-        points.push({ x: right - clampedR + Math.cos(a) * clampedR, y: bottom - clampedR + Math.sin(a) * clampedR });
-      }
-      // Bottom edge (right to left)
-      const botLen = (right - clampedR) - (left + clampedR);
-      const botSegs = Math.max(Math.round(botLen / 16), 4);
-      const botStartIdx = points.length;
-      for (let i = 1; i <= botSegs; i++) {
-        points.push({ x: right - clampedR - (botLen * i / botSegs), y: bottom });
-      }
-      sectionMidIndices.push(botStartIdx + Math.round(botSegs / 2) - 1);
-
-      // Bottom-left corner
-      for (let i = 1; i <= segs; i++) {
-        const a = Math.PI / 2 + (Math.PI / 2) * i / segs;
-        points.push({ x: left + clampedR + Math.cos(a) * clampedR, y: bottom - clampedR + Math.sin(a) * clampedR });
-      }
-      // Left edge (bottom to top)
-      const leftLen = (bottom - clampedR) - (top + clampedR);
-      const leftSegs = Math.max(Math.round(leftLen / 16), 4);
-      const leftStartIdx = points.length;
-      for (let i = 1; i <= leftSegs; i++) {
-        points.push({ x: left, y: bottom - clampedR - (leftLen * i / leftSegs) });
-      }
-      sectionMidIndices.push(leftStartIdx + Math.round(leftSegs / 2) - 1);
-
-      // Top-left corner
-      for (let i = 1; i <= segs; i++) {
-        const a = Math.PI + (Math.PI / 2) * i / segs;
-        points.push({ x: left + clampedR + Math.cos(a) * clampedR, y: top + clampedR + Math.sin(a) * clampedR });
-      }
-
-      // Compute cumulative distances
-      let totalDist = 0;
+    // Build CCW rectangular path for lane k
+    function buildLane(k) {
+      const o = laneOffset(k);
+      const p0 = { x: o, y: H - o };       // bottom-left
+      const p1 = { x: W - o, y: H - o };   // bottom-right
+      const p2 = { x: W - o, y: o };       // top-right
+      const p3 = { x: o, y: o };           // top-left
+      const points = [p0, p1, p2, p3, p0]; // closed
       const dists = [0];
+      let total = 0;
       for (let i = 1; i < points.length; i++) {
-        const dx = points[i].x - points[i-1].x;
-        const dy = points[i].y - points[i-1].y;
-        totalDist += Math.sqrt(dx * dx + dy * dy);
-        dists.push(totalDist);
+        total += Math.abs(points[i].x - points[i-1].x) + Math.abs(points[i].y - points[i-1].y);
+        dists.push(total);
       }
-
-      const changeZones = sectionMidIndices.map(idx => dists[idx]);
-      return { points, dists, totalDist, changeZones };
+      const side = W - 2 * o; // side length
+      // side midpoint t values: 0=bottom, 1=right, 2=top, 3=left
+      const mids = [side * 0.5, side * 1.5, side * 2.5, side * 3.5];
+      return { points, dists, totalDist: total, side, mids };
     }
 
-    // Get position + angle on lane at distance t (0..totalDist)
-    function getPosOnLane(lane, t) {
-      const { points, dists, totalDist } = lane;
-      const wrappedT = ((t % totalDist) + totalDist) % totalDist;
+    const lanes = [];
+    for (let k = 0; k < LANE_COUNT; k++) lanes.push(buildLane(k));
+
+    function wrapT(lane, t) {
+      const d = lanes[lane].totalDist;
+      return ((t % d) + d) % d;
+    }
+
+    function getPos(laneIdx, t) {
+      const { points, dists, totalDist } = lanes[laneIdx];
+      const wt = ((t % totalDist) + totalDist) % totalDist;
       for (let i = 1; i < points.length; i++) {
-        if (wrappedT <= dists[i]) {
+        if (wt <= dists[i]) {
           const segLen = dists[i] - dists[i-1];
-          const frac = segLen > 0 ? (wrappedT - dists[i-1]) / segLen : 0;
-          const x = points[i-1].x + (points[i].x - points[i-1].x) * frac;
-          const y = points[i-1].y + (points[i].y - points[i-1].y) * frac;
-          const angle = Math.atan2(points[i].y - points[i-1].y, points[i].x - points[i-1].x);
-          return { x, y, angle };
+          const frac = segLen > 0 ? (wt - dists[i-1]) / segLen : 0;
+          return {
+            x: points[i-1].x + (points[i].x - points[i-1].x) * frac,
+            y: points[i-1].y + (points[i].y - points[i-1].y) * frac,
+            angle: Math.atan2(points[i].y - points[i-1].y, points[i].x - points[i-1].x)
+          };
         }
       }
-      // Wrap-around: between last and first point
-      const lastP = points[points.length - 1];
-      const firstP = points[0];
-      const angle = Math.atan2(firstP.y - lastP.y, firstP.x - lastP.x);
-      return { x: lastP.x, y: lastP.y, angle };
+      return { x: points[0].x, y: points[0].y, angle: 0 };
     }
 
-    // --- Game State ---
-    const lanes = [];
-    for (let i = 0; i < LANE_COUNT; i++) {
-      lanes.push(buildLanePath(i));
-    }
-
-    // Lane-change zone threshold (how close to a zone you must be)
-    const CHANGE_ZONE_RADIUS = 20;
-
-    // Check if a car at position t on a given lane is near a lane-change zone
-    function isNearChangeZone(laneIdx, t) {
+    // Which change zone (side index 0-3) is position t in? -1 if none.
+    function zoneAt(laneIdx, t) {
       const lane = lanes[laneIdx];
-      const totalDist = lane.totalDist;
-      const wrappedT = ((t % totalDist) + totalDist) % totalDist;
-      for (const zoneT of lane.changeZones) {
-        let diff = Math.abs(wrappedT - zoneT);
-        if (diff > totalDist / 2) diff = totalDist - diff; // wrap-around
-        if (diff < CHANGE_ZONE_RADIUS) return true;
+      const wt = wrapT(laneIdx, t);
+      for (let s = 0; s < 4; s++) {
+        let diff = Math.abs(wt - lane.mids[s]);
+        if (diff > lane.totalDist / 2) diff = lane.totalDist - diff;
+        if (diff < ZONE_HALF) return s;
       }
-      return false;
+      return -1;
     }
 
-    // Dots: place evenly along each lane
-    const DOT_SPACING = 30;
+    // Map t on one lane to spatially-aligned t on another lane (near side s midpoint)
+    function mapT(fromLane, toLane, t, s) {
+      const rel = wrapT(fromLane, t) - lanes[fromLane].mids[s];
+      return wrapT(toLane, lanes[toLane].mids[s] + rel);
+    }
+
+    // --- Dots ---
+    const DOT_SPACING = 24;
+    const ZONE_SKIP = GAP_HALF + 10; // don't place dots in/near change zones
     let dots = [];
 
     function initDots() {
       dots = [];
-      for (let li = 0; li < LANE_COUNT; li++) {
-        const lane = lanes[li];
-        const count = Math.floor(lane.totalDist / DOT_SPACING);
-        for (let i = 0; i < count; i++) {
-          const t = (i / count) * lane.totalDist;
-          dots.push({ lane: li, t, collected: false });
+      for (let k = 0; k < LANE_COUNT; k++) {
+        const lane = lanes[k];
+        for (let s = 0; s < 4; s++) {
+          const t0 = s * lane.side;
+          const mid = lane.mids[s];
+          for (let t = t0 + 14; t < t0 + lane.side - 12; t += DOT_SPACING) {
+            if (Math.abs(t - mid) < ZONE_SKIP) continue;
+            dots.push({ lane: k, t, state: 0 }); // 0=white, 1=red, 2=eaten
+          }
         }
       }
     }
 
+    // --- Game State ---
     let score = 0;
     let lives = 3;
     let stage = 1;
@@ -356,56 +282,44 @@
     let crashTimer = 0;
     let stageClearTimer = 0;
 
-    // Player
     const player = {
-      lane: 0,
-      t: 0,
-      speed: 1.8,
-      baseSpeed: 1.8,
-      boosting: false,
-      targetLane: 0,
-      laneTransition: 0,
+      lane: 0, t: 0, boosting: false,
+      trans: null,       // {from, to, prog, side}
+      zoneSide: -1, zoneChanges: 0,
       x: 0, y: 0, angle: 0
     };
 
-    // Enemies
     let enemies = [];
 
-    function createEnemy(lane, tOffset) {
-      return {
-        lane,
-        t: tOffset,
-        speed: 1.4,
-        baseSpeed: 1.4,
-        targetLane: lane,
-        laneTransition: 0,
-        x: 0, y: 0, angle: 0,
-        changeTimer: 0,
-        changeCooldown: 120 + Math.random() * 180
-      };
+    function createEnemy(lane, t, speed) {
+      return { lane, t, speed, trans: null, zoneSide: -1, x: 0, y: 0, angle: 0 };
+    }
+
+    function playerSlowSpeed() { return 1.7 + stage * 0.04; }
+    function playerFastSpeed() { return playerSlowSpeed() * 1.75; }
+
+    function resetPositions() {
+      player.lane = 0;
+      player.t = lanes[0].mids[0]; // bottom center
+      player.trans = null;
+      player.zoneSide = -1;
+      player.zoneChanges = 0;
+      player.boosting = false;
+      enemies.forEach((e, i) => {
+        e.lane = i % LANE_COUNT;
+        e.t = lanes[e.lane].mids[2]; // top center
+        e.trans = null;
+        e.zoneSide = -1;
+      });
     }
 
     function initStage() {
-      player.lane = 0;
-      player.targetLane = 0;
-      player.laneTransition = 0;
-      player.t = 0;
-      player.baseSpeed = 1.8 + stage * 0.15;
-      player.speed = player.baseSpeed;
-      player.boosting = false;
-
-      enemies = [];
-      // Stage 1: 1 enemy, later stages add more
       const enemyCount = Math.min(stage, 3);
+      enemies = [];
       for (let i = 0; i < enemyCount; i++) {
-        const eLane = i % LANE_COUNT;
-        const eT = lanes[eLane].totalDist * (0.5 + i * 0.2);
-        const e = createEnemy(eLane, eT);
-        e.baseSpeed = 1.4 + stage * 0.12 + i * 0.2;
-        e.speed = e.baseSpeed;
-        enemies.push(e);
+        enemies.push(createEnemy(0, 0, 1.5 + stage * 0.08 + i * 0.05));
       }
-
+      resetPositions();
       initDots();
     }
 
@@ -414,191 +328,194 @@
       lives = 3;
       stage = 1;
       initStage();
-      updateUI();
-    }
-
-    function updateUI() {
-      document.getElementById('score').textContent = score;
-      document.getElementById('stage').textContent = stage;
-      document.getElementById('lives').textContent = lives;
-      document.getElementById('hiscore').textContent = hiScore;
     }
 
     // --- Input ---
     const keys = {};
+    // Lever direction that means "inward" for each side (0=bottom,1=right,2=top,3=left)
+    const INWARD_KEY = ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'];
+    const OUTWARD_KEY = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'];
+    // Touch buttons set these flags directly
+    let touchIn = false, touchOut = false;
+
     document.addEventListener('keydown', (e) => {
       keys[e.key] = true;
-      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        e.preventDefault();
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+      if (e.key === ' ') {
+        if (gameState === 'start') startGame();
+        else if (gameState === 'gameover') startGame();
+        else if (gameState === 'playing') player.boosting = true;
       }
-      if (gameState === 'start' && e.key === ' ') {
-        ensureAudio();
-        gameState = 'playing';
-        resetGame();
-        document.getElementById('start-screen').style.display = 'none';
-      }
-      if (gameState === 'gameover' && e.key === ' ') {
-        gameState = 'playing';
-        resetGame();
-        document.getElementById('gameover-screen').style.display = 'none';
-      }
-    });
-    document.addEventListener('keyup', (e) => { keys[e.key] = false; });
-
-    // Lane change input
-    let laneChangeQueued = null;
-
-    function tryLaneChange(direction) {
-      if (player.laneTransition !== 0) return false;
-      if (!isNearChangeZone(player.lane, player.t)) return false;
-      const newLane = player.lane + direction;
-      if (newLane < 0 || newLane >= LANE_COUNT) return false;
-      player.targetLane = newLane;
-      player.laneTransition = 1.0;
-      return true;
-    }
-
-    function handleLaneInput() {
-      if (gameState !== 'playing') return;
-
-      if (keys['ArrowLeft'] || keys['ArrowUp']) {
-        tryLaneChange(-1); // outer lane
-        keys['ArrowLeft'] = false;
-        keys['ArrowUp'] = false;
-      }
-      if (keys['ArrowRight'] || keys['ArrowDown']) {
-        tryLaneChange(1); // inner lane
-        keys['ArrowRight'] = false;
-        keys['ArrowDown'] = false;
-      }
-    }
-
-    // Touch controls
-    let touchLane = null;
-
-    function setupTouchControls() {
-      const leftBtn = document.getElementById('left-btn');
-      const rightBtn = document.getElementById('right-btn');
-      const speedBtn = document.getElementById('speed-btn');
-
-      function touchHandler(action) {
-        return (e) => {
-          e.preventDefault();
-          if (gameState === 'playing') action();
-        };
-      }
-
-      leftBtn.addEventListener('touchstart', touchHandler(() => {
-        tryLaneChange(-1);
-      }));
-      rightBtn.addEventListener('touchstart', touchHandler(() => {
-        tryLaneChange(1);
-      }));
-      speedBtn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        player.boosting = true;
-      });
-      speedBtn.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        player.boosting = false;
-      });
-
-      // Tap to start
-      canvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (gameState === 'start') {
-          ensureAudio();
-          gameState = 'playing';
-          resetGame();
-          document.getElementById('start-screen').style.display = 'none';
-        }
-        if (gameState === 'gameover') {
-          gameState = 'playing';
-          resetGame();
-          document.getElementById('gameover-screen').style.display = 'none';
-        }
-      });
-
-      canvas.addEventListener('click', () => {
-        if (gameState === 'start') {
-          ensureAudio();
-          gameState = 'playing';
-          resetGame();
-          document.getElementById('start-screen').style.display = 'none';
-        }
-        if (gameState === 'gameover') {
-          gameState = 'playing';
-          resetGame();
-          document.getElementById('gameover-screen').style.display = 'none';
-        }
-      });
-    }
-    setupTouchControls();
-
-    // Speed boost with spacebar
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowUp' && gameState === 'playing') player.boosting = true;
     });
     document.addEventListener('keyup', (e) => {
-      if (e.key === 'ArrowUp') player.boosting = false;
+      keys[e.key] = false;
+      if (e.key === ' ') player.boosting = false;
     });
 
-    // --- Collision Detection ---
-    function checkCollision(p, e) {
-      const dx = p.x - e.x;
-      const dy = p.y - e.y;
-      return Math.sqrt(dx * dx + dy * dy) < 18;
+    function startGame() {
+      ensureAudio();
+      gameState = 'playing';
+      resetGame();
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('gameover-screen').style.display = 'none';
     }
 
-    // --- Map player t to equivalent t on another lane ---
-    function mapTToLane(fromLane, toLane, t) {
-      const ratio = t / lanes[fromLane].totalDist;
-      return ratio * lanes[toLane].totalDist;
+    function setupTouch() {
+      const bind = (id, down, up) => {
+        const el = document.getElementById(id);
+        el.addEventListener('touchstart', (e) => { e.preventDefault(); down(); });
+        el.addEventListener('touchend', (e) => { e.preventDefault(); up(); });
+        el.addEventListener('touchcancel', (e) => { e.preventDefault(); up(); });
+      };
+      bind('in-btn', () => { touchIn = true; }, () => { touchIn = false; });
+      bind('out-btn', () => { touchOut = true; }, () => { touchOut = false; });
+      bind('speed-btn', () => { player.boosting = true; }, () => { player.boosting = false; });
+
+      const tapStart = (e) => {
+        if (gameState === 'start' || gameState === 'gameover') {
+          if (e) e.preventDefault();
+          startGame();
+        }
+      };
+      document.getElementById('start-screen').addEventListener('touchstart', tapStart);
+      document.getElementById('gameover-screen').addEventListener('touchstart', tapStart);
+      document.getElementById('start-screen').addEventListener('click', () => tapStart());
+      document.getElementById('gameover-screen').addEventListener('click', () => tapStart());
+    }
+    setupTouch();
+
+    // --- Lane change logic ---
+    const TRANS_SPEED = 0.13; // progress per frame
+
+    function playerWantsChange(side) {
+      // returns +1 (inward), -1 (outward), or 0
+      if (keys[INWARD_KEY[side]] || touchIn) return 1;
+      if (keys[OUTWARD_KEY[side]] || touchOut) return -1;
+      return 0;
     }
 
-    // --- Enemy AI ---
-    function updateEnemyAI(enemy, dt) {
-      if (enemy.laneTransition !== 0) return;
-      if (!isNearChangeZone(enemy.lane, enemy.t)) return;
+    function updatePlayer() {
+      const speed = player.boosting ? playerFastSpeed() : playerSlowSpeed();
 
-      enemy.changeTimer++;
-      if (enemy.changeTimer >= enemy.changeCooldown) {
-        const playerDist = Math.abs(enemy.x - player.x) + Math.abs(enemy.y - player.y);
-        let changed = false;
-        if (enemy.lane === player.lane && playerDist < 200) {
-          // Dodge player
-          const dir = Math.random() < 0.5 ? -1 : 1;
-          const newLane = enemy.lane + dir;
-          if (newLane >= 0 && newLane < LANE_COUNT) {
-            enemy.targetLane = newLane;
-            enemy.laneTransition = 1.0;
-            changed = true;
-          }
-        } else if (Math.random() < 0.3) {
-          const dir = Math.random() < 0.5 ? -1 : 1;
-          const newLane = enemy.lane + dir;
-          if (newLane >= 0 && newLane < LANE_COUNT) {
-            enemy.targetLane = newLane;
-            enemy.laneTransition = 1.0;
-            changed = true;
+      // advance along current (or from-) lane
+      player.t = wrapT(player.trans ? player.trans.from : player.lane, player.t + speed);
+
+      if (player.trans) {
+        player.trans.prog += TRANS_SPEED;
+        if (player.trans.prog >= 1) {
+          const tr = player.trans;
+          player.t = mapT(tr.from, tr.to, player.t, tr.side);
+          player.lane = tr.to;
+          player.trans = null;
+        }
+      }
+
+      const curLane = player.trans ? player.trans.from : player.lane;
+      const side = zoneAt(curLane, player.t);
+
+      // track zone entry/exit
+      if (side !== player.zoneSide) {
+        player.zoneSide = side;
+        player.zoneChanges = 0;
+      }
+
+      // start lane change if in zone, lever held, no active transition
+      if (side >= 0 && !player.trans) {
+        const maxChanges = player.boosting ? 1 : 2;
+        const dir = playerWantsChange(side);
+        if (dir !== 0 && player.zoneChanges < maxChanges) {
+          const to = player.lane + dir;
+          if (to >= 0 && to < LANE_COUNT) {
+            player.trans = { from: player.lane, to, prog: 0, side };
+            player.zoneChanges++;
           }
         }
-        enemy.changeTimer = 0;
-        enemy.changeCooldown = 90 + Math.random() * 160;
+      }
+
+      // compute position
+      if (player.trans) {
+        const tr = player.trans;
+        const a = getPos(tr.from, player.t);
+        const b = getPos(tr.to, mapT(tr.from, tr.to, player.t, tr.side));
+        player.x = a.x + (b.x - a.x) * tr.prog;
+        player.y = a.y + (b.y - a.y) * tr.prog;
+        player.angle = a.angle + (tr.to > tr.from ? -0.35 : 0.35);
+      } else {
+        const p = getPos(player.lane, player.t);
+        player.x = p.x; player.y = p.y; player.angle = p.angle;
       }
     }
 
-    // --- Game Update ---
-    let engineSoundTimer = 0;
+    function updateEnemy(e) {
+      // enemy speeds up as dots get eaten
+      const eaten = dots.filter(d => d.state === 2).length / Math.max(dots.length, 1);
+      const spd = Math.min(e.speed * (1 + 0.4 * eaten), playerFastSpeed() * 0.95);
+
+      // clockwise = t decreases
+      e.t = wrapT(e.trans ? e.trans.from : e.lane, e.t - spd);
+
+      if (e.trans) {
+        e.trans.prog += TRANS_SPEED;
+        if (e.trans.prog >= 1) {
+          e.t = mapT(e.trans.from, e.trans.to, e.t, e.trans.side);
+          e.lane = e.trans.to;
+          e.trans = null;
+        }
+      }
+
+      const curLane = e.trans ? e.trans.from : e.lane;
+      const side = zoneAt(curLane, e.t);
+
+      if (side !== e.zoneSide) {
+        e.zoneSide = side;
+        // decide once on zone entry: chase player's lane
+        if (side >= 0 && !e.trans) {
+          const targetLane = player.trans ? player.trans.to : player.lane;
+          let dir = 0;
+          if (targetLane > e.lane) dir = 1;
+          else if (targetLane < e.lane) dir = -1;
+          const chase = Math.random() < 0.8;
+          if (dir !== 0 && chase) {
+            e.trans = { from: e.lane, to: e.lane + dir, prog: 0, side };
+          } else if (dir === 0 && Math.random() < 0.15) {
+            const rd = Math.random() < 0.5 ? -1 : 1;
+            const to = e.lane + rd;
+            if (to >= 0 && to < LANE_COUNT) e.trans = { from: e.lane, to, prog: 0, side };
+          }
+        }
+      }
+
+      // position
+      if (e.trans) {
+        const tr = e.trans;
+        const a = getPos(tr.from, e.t);
+        const b = getPos(tr.to, mapT(tr.from, tr.to, e.t, tr.side));
+        e.x = a.x + (b.x - a.x) * tr.prog;
+        e.y = a.y + (b.y - a.y) * tr.prog;
+        e.angle = a.angle + Math.PI + (tr.to > tr.from ? 0.35 : -0.35);
+      } else {
+        const p = getPos(e.lane, e.t);
+        e.x = p.x; e.y = p.y; e.angle = p.angle + Math.PI;
+      }
+
+      // turn dots red as enemy passes over them
+      const eLane = e.trans ? e.trans.from : e.lane;
+      dots.forEach(d => {
+        if (d.state !== 0) return;
+        if (d.lane !== eLane) return;
+        const dp = getPos(d.lane, d.t);
+        if (Math.abs(e.x - dp.x) + Math.abs(e.y - dp.y) < 10) d.state = 1;
+      });
+    }
+
+    // --- Update ---
+    let engineTimer = 0;
 
     function update() {
-      if (gameState !== 'playing' && gameState !== 'crash' && gameState !== 'stageclear') return;
-
       if (gameState === 'crash') {
         crashTimer--;
         if (crashTimer <= 0) {
           lives--;
-          updateUI();
           if (lives <= 0) {
             gameState = 'gameover';
             if (score > hiScore) {
@@ -607,19 +524,8 @@
             }
             document.getElementById('final-score').textContent = score;
             document.getElementById('gameover-screen').style.display = 'flex';
-            updateUI();
           } else {
-            // Respawn player
-            player.t = 0;
-            player.lane = 0;
-            player.targetLane = 0;
-            player.laneTransition = 0;
-            // Reset enemies to safe positions
-            enemies.forEach((e, i) => {
-              e.t = lanes[e.lane].totalDist * (0.5 + i * 0.15);
-              e.laneTransition = 0;
-              e.targetLane = e.lane;
-            });
+            resetPositions();
             gameState = 'playing';
           }
         }
@@ -631,340 +537,204 @@
         if (stageClearTimer <= 0) {
           stage++;
           initStage();
-          updateUI();
           gameState = 'playing';
         }
         return;
       }
 
-      // Handle lane change input
-      handleLaneInput();
+      if (gameState !== 'playing') return;
 
-      // Player speed
-      player.speed = player.boosting ? player.baseSpeed * 1.6 : player.baseSpeed;
+      updatePlayer();
+      enemies.forEach(updateEnemy);
 
-      // Move player (clockwise)
-      player.t += player.speed;
-      if (player.t >= lanes[player.lane].totalDist) {
-        player.t -= lanes[player.lane].totalDist;
-      }
-
-      // Lane transition
-      if (player.laneTransition > 0) {
-        player.laneTransition -= 0.08;
-        if (player.laneTransition <= 0) {
-          player.laneTransition = 0;
-          // Map t from old lane to new lane
-          player.t = mapTToLane(player.lane, player.targetLane, player.t);
-          player.lane = player.targetLane;
-        }
-      }
-
-      // Compute player visual position
-      if (player.laneTransition > 0) {
-        const pos1 = getPosOnLane(lanes[player.lane], player.t);
-        const mappedT = mapTToLane(player.lane, player.targetLane, player.t);
-        const pos2 = getPosOnLane(lanes[player.targetLane], mappedT);
-        const frac = 1 - player.laneTransition;
-        player.x = pos1.x + (pos2.x - pos1.x) * frac;
-        player.y = pos1.y + (pos2.y - pos1.y) * frac;
-        player.angle = pos1.angle;
-      } else {
-        const pos = getPosOnLane(lanes[player.lane], player.t);
-        player.x = pos.x;
-        player.y = pos.y;
-        player.angle = pos.angle;
-      }
-
-      // Move enemies (counter-clockwise, so subtract)
-      enemies.forEach(e => {
-        e.speed = e.baseSpeed;
-        e.t -= e.speed;
-        if (e.t < 0) e.t += lanes[e.lane].totalDist;
-
-        // Lane transition
-        if (e.laneTransition > 0) {
-          e.laneTransition -= 0.08;
-          if (e.laneTransition <= 0) {
-            e.laneTransition = 0;
-            e.t = mapTToLane(e.lane, e.targetLane, e.t);
-            e.lane = e.targetLane;
-          }
-        }
-
-        // Compute position
-        if (e.laneTransition > 0) {
-          const pos1 = getPosOnLane(lanes[e.lane], e.t);
-          const mappedT = mapTToLane(e.lane, e.targetLane, e.t);
-          const pos2 = getPosOnLane(lanes[e.targetLane], mappedT);
-          const frac = 1 - e.laneTransition;
-          e.x = pos1.x + (pos2.x - pos1.x) * frac;
-          e.y = pos1.y + (pos2.y - pos1.y) * frac;
-          e.angle = pos1.angle + Math.PI; // facing opposite direction
-        } else {
-          const pos = getPosOnLane(lanes[e.lane], e.t);
-          e.x = pos.x;
-          e.y = pos.y;
-          e.angle = pos.angle + Math.PI;
-        }
-
-        updateEnemyAI(e);
-      });
-
-      // Check dot collection
-      let collected = false;
+      // collect dots (score in 5-point increments like original; red = double)
+      const pLane = player.trans ? player.trans.from : player.lane;
+      const pLane2 = player.trans ? player.trans.to : player.lane;
       dots.forEach(d => {
-        if (d.collected) return;
-        const effectiveLane = player.laneTransition > 0 ?
-          (player.laneTransition > 0.5 ? player.lane : player.targetLane) : player.lane;
-        if (d.lane !== effectiveLane) return;
-        const dotPos = getPosOnLane(lanes[d.lane], d.t);
-        const dx = player.x - dotPos.x;
-        const dy = player.y - dotPos.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 16) {
-          d.collected = true;
-          score += 10;
-          collected = true;
-          playDotSound();
+        if (d.state === 2) return;
+        if (d.lane !== pLane && d.lane !== pLane2) return;
+        const dp = getPos(d.lane, d.t);
+        if (Math.abs(player.x - dp.x) + Math.abs(player.y - dp.y) < 10) {
+          score += d.state === 1 ? 10 : 5;
+          if (score >= 100000) score -= 100000; // original: score wraps at 100,000
+          if (d.state === 1) playRedDotSound(); else playDotSound();
+          d.state = 2;
         }
       });
-      if (collected) updateUI();
 
-      // Check if all dots collected
-      if (dots.every(d => d.collected)) {
+      // stage clear
+      if (dots.every(d => d.state === 2)) {
         gameState = 'stageclear';
-        stageClearTimer = 90;
-        score += 100 * stage;
-        updateUI();
+        stageClearTimer = 100;
         playStageClearSound();
         return;
       }
 
-      // Check collision with enemies
+      // collision
       for (const e of enemies) {
-        if (checkCollision(player, e)) {
+        const dx = player.x - e.x, dy = player.y - e.y;
+        if (dx * dx + dy * dy < 13 * 13) {
           gameState = 'crash';
-          crashTimer = 60;
+          crashTimer = 70;
           playCrashSound();
           return;
         }
       }
 
-      // Engine sound
-      engineSoundTimer++;
-      if (engineSoundTimer % 15 === 0) {
-        playSound(80 + player.speed * 20, 0.05, 'triangle', 0.03);
+      // engine hum
+      engineTimer++;
+      if (engineTimer % 14 === 0) {
+        playSound(70 + (player.boosting ? 50 : 20), 0.05, 'triangle', 0.03);
       }
     }
 
     // --- Drawing ---
-    const BG_COLOR = '#2244cc';     // blue background (brighter like original)
-    const TRACK_LINE_COLOR = '#0a1860'; // dark blue track border lines
-    const DOT_COLOR = '#ffffff';   // white dots like original
-    const LANE_HALF_W = 10;        // half-width of lane path for border drawing
-
-    // Build offset path (inner/outer border of a lane)
-    function getOffsetPath(laneIdx, offset) {
-      // Returns array of {x, y} points offset perpendicular to the lane
-      const lane = lanes[laneIdx];
-      const pts = lane.points;
-      const result = [];
-      for (let i = 0; i < pts.length; i++) {
-        const prev = pts[(i - 1 + pts.length) % pts.length];
-        const curr = pts[i];
-        const next = pts[(i + 1) % pts.length];
-        // Average normal at this point
-        const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y;
-        const dx2 = next.x - curr.x, dy2 = next.y - curr.y;
-        const nx = -(dy1 + dy2) / 2, ny = (dx1 + dx2) / 2;
-        const len = Math.sqrt(nx * nx + ny * ny) || 1;
-        result.push({ x: curr.x + (nx / len) * offset, y: curr.y + (ny / len) * offset });
-      }
-      return result;
-    }
-
-    function drawClosedPath(points, color, lineWidth) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = lineWidth;
-      ctx.lineJoin = 'miter';
-      ctx.lineCap = 'butt';
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      ctx.closePath();
-      ctx.stroke();
-    }
-
     function drawTrack() {
-      // Draw each lane with borders on both sides (like original)
-      for (let li = 0; li < LANE_COUNT; li++) {
-        const outerPath = getOffsetPath(li, -LANE_HALF_W);
-        const innerPath = getOffsetPath(li, LANE_HALF_W);
-        drawClosedPath(outerPath, TRACK_LINE_COLOR, 2);
-        drawClosedPath(innerPath, TRACK_LINE_COLOR, 2);
-      }
+      ctx.fillStyle = COLOR_BG;
+      ctx.fillRect(0, 0, W, H);
 
-      // Draw center rectangle border (inner area)
-      const innerLane = lanes[LANE_COUNT - 1];
-      const centerPath = getOffsetPath(LANE_COUNT - 1, LANE_HALF_W + 4);
-      ctx.strokeStyle = TRACK_LINE_COLOR;
+      ctx.strokeStyle = COLOR_LINE;
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(centerPath[0].x, centerPath[0].y);
-      for (let i = 1; i < centerPath.length; i++) {
-        ctx.lineTo(centerPath[i].x, centerPath[i].y);
-      }
-      ctx.closePath();
-      ctx.stroke();
-    }
 
-    function drawChangeZones() {
-      // Draw perpendicular connectors between all lanes at change points
-      for (let zi = 0; zi < 4; zi++) {
-        // Draw a line from outer border of lane 0 to inner border of lane 3
-        const outerPos = getPosOnLane(lanes[0], lanes[0].changeZones[zi]);
-        const innerPos = getPosOnLane(lanes[LANE_COUNT - 1], lanes[LANE_COUNT - 1].changeZones[zi]);
+      for (let k = 0; k <= LANE_COUNT; k++) {
+        const o = MARGIN + LANE_W * k;
+        const L = o, R = W - o, T = o, B = H - o;
+        const cx = W / 2, cy = H / 2;
 
-        // Extend slightly beyond the lanes
-        const dx = innerPos.x - outerPos.x;
-        const dy = innerPos.y - outerPos.y;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const ext = LANE_HALF_W + 2;
-
-        ctx.strokeStyle = TRACK_LINE_COLOR;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(outerPos.x - (dx / len) * ext, outerPos.y - (dy / len) * ext);
-        ctx.lineTo(innerPos.x + (dx / len) * ext, innerPos.y + (dy / len) * ext);
-        ctx.stroke();
+        if (k === 0 || k === LANE_COUNT) {
+          // outer & inner boundary: continuous rectangle
+          ctx.strokeRect(L, T, R - L, B - T);
+        } else {
+          // dividers with gaps at side midpoints
+          ctx.beginPath();
+          // top side
+          ctx.moveTo(L, T); ctx.lineTo(cx - GAP_HALF, T);
+          ctx.moveTo(cx + GAP_HALF, T); ctx.lineTo(R, T);
+          // bottom side
+          ctx.moveTo(L, B); ctx.lineTo(cx - GAP_HALF, B);
+          ctx.moveTo(cx + GAP_HALF, B); ctx.lineTo(R, B);
+          // left side
+          ctx.moveTo(L, T); ctx.lineTo(L, cy - GAP_HALF);
+          ctx.moveTo(L, cy + GAP_HALF); ctx.lineTo(L, B);
+          // right side
+          ctx.moveTo(R, T); ctx.lineTo(R, cy - GAP_HALF);
+          ctx.moveTo(R, cy + GAP_HALF); ctx.lineTo(R, B);
+          ctx.stroke();
+        }
       }
     }
 
     function drawDots() {
       dots.forEach(d => {
-        if (d.collected) return;
-        const pos = getPosOnLane(lanes[d.lane], d.t);
-        ctx.fillStyle = DOT_COLOR;
-        ctx.fillRect(pos.x - 2, pos.y - 2, 4, 4); // square dots like original
+        if (d.state === 2) return;
+        const p = getPos(d.lane, d.t);
+        if (d.state === 0) {
+          ctx.fillStyle = COLOR_DOT;
+          ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+        } else {
+          // red diamond (double points)
+          ctx.fillStyle = COLOR_RED_DOT;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(Math.PI / 4);
+          ctx.fillRect(-3, -3, 6, 6);
+          ctx.restore();
+        }
       });
     }
 
-    function drawCar(x, y, angle, color1, color2, isCrashed) {
+    function drawCar(x, y, angle, color, crashed) {
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(angle);
-
-      if (isCrashed) {
+      if (crashed) {
         const t = crashTimer;
-        ctx.strokeStyle = t % 6 < 3 ? '#ff2200' : '#ffcc00';
-        ctx.lineWidth = 2;
-        const sz = 8 + (60 - t) * 0.15;
-        ctx.beginPath();
-        ctx.moveTo(-sz, -sz); ctx.lineTo(sz, sz);
-        ctx.moveTo(sz, -sz); ctx.lineTo(-sz, sz);
-        ctx.moveTo(-sz, 0); ctx.lineTo(sz, 0);
-        ctx.moveTo(0, -sz); ctx.lineTo(0, sz);
-        ctx.stroke();
+        ctx.fillStyle = t % 6 < 3 ? '#ff8800' : '#ffff00';
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + t * 0.1;
+          const r = 6 + (70 - t) * 0.25;
+          ctx.fillRect(Math.cos(a) * r - 3, Math.sin(a) * r - 3, 6, 6);
+        }
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-4, -4, 8, 8);
       } else {
-        // Simple retro pixel car
-        ctx.fillStyle = color1;
-        ctx.fillRect(-8, -5, 16, 10);
-        // Front
-        ctx.fillStyle = color2;
-        ctx.fillRect(6, -3, 4, 6);
-        // Rear
-        ctx.fillRect(-10, -3, 3, 6);
-        // Windshield
-        ctx.fillStyle = '#88ccff';
-        ctx.fillRect(2, -3, 3, 6);
+        ctx.rotate(angle);
+        // body
+        ctx.fillStyle = color;
+        ctx.fillRect(-11, -6, 22, 12);
+        // cockpit
+        ctx.fillStyle = '#222';
+        ctx.fillRect(1, -3, 6, 6);
+        // wheels
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-9, -8, 5, 2);
+        ctx.fillRect(-9, 6, 5, 2);
+        ctx.fillRect(4, -8, 5, 2);
+        ctx.fillRect(4, 6, 5, 2);
       }
-
       ctx.restore();
     }
 
-    function drawCenterInfo() {
-      ctx.textAlign = 'center';
-
-      // Lives as small car icons
-      for (let i = 0; i < lives; i++) {
-        ctx.fillStyle = '#5af';
-        ctx.fillRect(W / 2 - 20 + i * 16, H / 2 - 28, 10, 6);
-        ctx.fillStyle = '#38f';
-        ctx.fillRect(W / 2 - 20 + i * 16 + 7, H / 2 - 27, 3, 4);
-      }
-
-      // Score
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 20px Courier New';
-      ctx.fillText(String(score).padStart(6, '0'), W / 2, H / 2 + 2);
-
-      // Stage
-      ctx.font = '12px Courier New';
-      ctx.fillStyle = '#8af';
-      ctx.fillText('STAGE ' + stage, W / 2, H / 2 + 20);
-
-      // Hi score at top center
-      ctx.fillStyle = '#ff6666';
-      ctx.font = 'bold 14px Courier New';
-      ctx.fillText('HI ' + String(hiScore).padStart(6, '0'), W / 2, 18);
+    function drawMiniCar(x, y) {
+      ctx.fillStyle = COLOR_PLAYER;
+      ctx.fillRect(x - 8, y - 4, 16, 8);
+      ctx.fillStyle = '#222';
+      ctx.fillRect(x + 1, y - 2, 4, 4);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(x - 6, y - 6, 4, 2);
+      ctx.fillRect(x - 6, y + 4, 4, 2);
+      ctx.fillRect(x + 3, y - 6, 4, 2);
+      ctx.fillRect(x + 3, y + 4, 4, 2);
     }
 
-    function drawStageClear() {
+    function drawCenter() {
+      const cx = W / 2, cy = H / 2;
+      // remaining cars (spares)
+      const spares = Math.max(lives - 1, 0);
+      for (let i = 0; i < spares; i++) {
+        drawMiniCar(cx - (spares - 1) * 12 + i * 24, cy - 26);
+      }
+      // score (6 digits, like original)
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 24px Courier New';
+      ctx.font = 'bold 26px "Courier New", monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('STAGE CLEAR!', W / 2, H / 2 + 44);
-      ctx.font = '14px Courier New';
-      ctx.fillStyle = '#8cf';
-      ctx.fillText(`BONUS +${100 * stage}`, W / 2, H / 2 + 64);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(score).padStart(6, '0'), cx, cy + 8);
+      // hi-score (small)
+      ctx.font = '12px "Courier New", monospace';
+      ctx.fillStyle = '#ccddff';
+      ctx.fillText('HI ' + String(hiScore).padStart(6, '0'), cx, cy + 34);
+
+      if (gameState === 'stageclear') {
+        ctx.fillStyle = '#ffd800';
+        ctx.font = 'bold 16px "Courier New", monospace';
+        ctx.fillText('STAGE ' + stage + ' CLEAR', cx, cy - 52);
+      }
     }
 
     function draw() {
-      // Blue background
-      ctx.fillStyle = BG_COLOR;
-      ctx.fillRect(0, 0, W, H);
-
       drawTrack();
-      drawChangeZones();
       drawDots();
-      drawCenterInfo();
+      drawCenter();
 
       if (gameState === 'crash') {
-        drawCar(player.x, player.y, player.angle, '#5af', '#38f', true);
-      } else if (gameState === 'playing') {
-        drawCar(player.x, player.y, player.angle, '#5af', '#38f', false);
+        drawCar(player.x, player.y, player.angle, COLOR_PLAYER, true);
+      } else if (gameState !== 'start') {
+        drawCar(player.x, player.y, player.angle, COLOR_PLAYER, false);
       }
-
-      enemies.forEach(e => {
-        if (gameState === 'crash') {
-          const dx = player.x - e.x;
-          const dy = player.y - e.y;
-          const crashed = Math.sqrt(dx * dx + dy * dy) < 20;
-          drawCar(e.x, e.y, e.angle, '#f44', '#d22', crashed);
-        } else {
-          drawCar(e.x, e.y, e.angle, '#f44', '#d22', false);
-        }
-      });
-
-      if (gameState === 'stageclear') {
-        drawStageClear();
+      if (gameState !== 'start') {
+        enemies.forEach(e => drawCar(e.x, e.y, e.angle, COLOR_ENEMY, false));
       }
     }
 
-    // --- Game Loop ---
-    function gameLoop() {
+    // --- Main Loop ---
+    function loop() {
       update();
       draw();
-      requestAnimationFrame(gameLoop);
+      requestAnimationFrame(loop);
     }
-
-    // --- Init ---
+    // initialize a display state behind the start screen
     initStage();
-    updateUI();
-    document.getElementById('hiscore').textContent = hiScore;
-    gameLoop();
+    loop();
   </script>
 </body>
 </html>
